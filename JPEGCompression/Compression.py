@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import matplotlib.cm as cm
-from matplotlib import pyplot as plt
 from PIL import Image
 import math
+from collections import Counter
 
 np.set_printoptions(threshold=np.nan)
 
@@ -13,24 +12,6 @@ class JPEG:
     def __init__(self, img):
         self.img = np.array(Image.open(img))
 
-    def openShow(self):
-        img = Image.open(self.img)
-        Image._show(img)
-
-    def rgb2ycbcr(self, matrix):
-        xform = np.array([[.299, .587, .114], [-.1687, -.3313, .5], [.5, -.4187, -.0813]])
-        ycbcr = matrix.dot(xform.T)
-        ycbcr[:, :, [1, 2]] += 128
-        return np.round(ycbcr)
-
-    def ycbcr2rgb(self, im):
-        xform = np.array([[1, 0, 1.402], [1, -0.34414, -.71414], [1, 1.772, 0]])
-        rgb = im.astype(np.float)
-        rgb[:, :, [1, 2]] -= 128
-        rgb = rgb.dot(xform.T)
-        np.putmask(rgb, rgb > 255, 255)
-        np.putmask(rgb, rgb < 0, 0)
-        return np.round(rgb)
 
     def hinTransformation(self,matrix):
         ycbcr = np.array([[.299, .587, .114], [-.169, -.331, .5], [.5, -.419, -.081]])
@@ -40,21 +21,25 @@ class JPEG:
         matrix[:, :, [1, 2]] += 128
         return np.round(matrix)
 
+
     def rueckTransformation(self,matrix):
         ycbcr = np.array([[1, 0, 1.402], [1, -.34414, -.71414], [1, 1.722, 0]])
         matrix[:, :, [1, 2]] -= 128
+
         for a in range(matrix.shape[0]):
             for b in range(matrix.shape[1]):
                 np.matmul(ycbcr,np.array([matrix[a][b][0],matrix[a][b][1],matrix[a][b][2]]), matrix[a][b])
-        return np.uint8(np.round(matrix))
 
-    def showYCBCR(self):
-        img = Image.fromarray(self.rgb2ycbcr())
-        Image._show(img)
+        np.putmask(matrix, matrix > 255, 255)
+        np.putmask(matrix, matrix < 0, 0)
+
+        return matrix
+
 
     def showState(self,matrix):
         im = Image.fromarray(np.uint8(matrix))
         Image._show(im)
+
 
     def crop(self):
         image = self.img
@@ -76,20 +61,6 @@ class JPEG:
                 cropped_image[rownum][colnum] = image[rownum][colnum]
         return cropped_image
 
-    def getImage(self):
-        image = self.img
-        return image
-
-    def partition(self, block_size):
-        x = self.crop(8)
-
-        data = np.split(x, (x.shape[0] / block_size)) #512x512 : 64, wenn 8 -> 64x64 mit jeweils 8
-        res = []
-
-
-        for number, arr in enumerate(data):
-            res.append(np.split(arr, arr.shape[1] / block_size, axis=1))
-        return res
 
     def dct(self, matrix):
         QY = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
@@ -112,22 +83,14 @@ class JPEG:
 
         helpMat = np.zeros((8, 8, 1))
 
-        # blöcke
-        for a in range(0, matrix.shape[0], 8):  # start, stop, step
+        for a in range(0, matrix.shape[0], 8):
             for b in range(0, matrix.shape[1], 8):
-
-                # drei ebenen
                 for z in range(0,3):
-                    #print('---------')
-
-                    # äußere schleife
                     for u in range(0, 8):
                         for v in range(0, 8):
-                            #print(matrix[a+u][b+v][z])
 
                             help = 0
 
-                            #innere schleife
                             for x in range(0,8):
                                 for y in range(0,8):
                                     help += matrix[a+x][b+y][z] * math.cos(((2 * x + 1) * u * math.pi) / 16) * \
@@ -144,6 +107,8 @@ class JPEG:
 
                             help = help * 1/4 * cu * cv
 
+                           # matrix[a+u][b+v][z] = help
+
                             #print(help)
                             if z == 0:
                                 helpMat[u][v] = int(round(help/QY[u][v]))
@@ -154,6 +119,7 @@ class JPEG:
                         for s in range(0, 8):
                             matrix[a+r][b+s][z] = helpMat[r][s]
         return matrix
+
 
     def dequant(self, matrix):
         QY = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
@@ -174,13 +140,9 @@ class JPEG:
                        [99, 99, 99, 99, 99, 99, 99, 99],
                        [99, 99, 99, 99, 99, 99, 99, 99]])
 
-        for a in range(0, matrix.shape[0], 8):  # start, stop, step
+        for a in range(0, matrix.shape[0], 8):
             for b in range(0, matrix.shape[1], 8):
-
-                # drei ebenen
                 for z in range(0,3):
-
-                    # äußere schleife
                     for x in range(0, 8):
                         for y in range(0, 8):
                             if z == 0:
@@ -193,23 +155,16 @@ class JPEG:
     def inversedct(self, matrix):
         helpMat = np.zeros((8, 8, 1))
 
-        # blöcke
-        for a in range(0, matrix.shape[0], 8):  # start, stop, step
+        for a in range(0, matrix.shape[0], 8):
             for b in range(0, matrix.shape[1], 8):
-
-                # drei ebenen
                 for z in range(0,3):
-
-                    # äußere schleife
                     for x in range(0, 8):
                         for y in range(0, 8):
 
                             help = 0
 
-                            #innere schleife
                             for u in range(0,8):
                                 for v in range(0,8):
-
                                     if u == 0:
                                         cu = 1 / math.sqrt(2)
                                     else:
@@ -219,43 +174,83 @@ class JPEG:
                                     else:
                                         cv = 1
 
-                                    help += round(cu * cv * matrix[a+u][b+v][z] * math.cos(((2 * x + 1) * u * math.pi) / 16) * \
-                                                                            math.cos(((2 * y + 1) * v * math.pi) / 16))
+                                    help += cu * cv * matrix[a+u][b+v][z] * math.cos(((2 * x + 1) * u * math.pi) / 16) * math.cos(((2 * y + 1) * v * math.pi) / 16)
 
-                            helpMat[x][y] = int(round(help * 1/4))
+                            helpMat[x][y] = help * 1/4
 
                     for x in range(0, 8):
                         for y in range(0, 8):
                             matrix[a+x][b+y][z] = helpMat[x][y]
+
         return matrix
+
+
+    def entropie(self, matrix):
+
+        counts = Counter()
+
+        entropy = 0
+        i = 0
+
+        for x in range(matrix.shape[0]):
+            for y in range(matrix.shape[1]):
+                if len(matrix.shape) == 3:
+                    for z in range(matrix.shape[2]):
+                        counts[matrix[x][y][z]] += 1
+                        i += 1
+                else:
+                    counts[matrix[x][y]] += 1
+                    i += 1
+
+        probs = [float(c) / i for c in counts.values()]
+
+        for p in probs:
+            if p > 0.:
+                entropy -= p * math.log(p, 2)
+
+        return entropy
+
+
+    def entscheidungsgehalt(self, matrix):
+
+        counts = Counter()
+
+        for x in range(matrix.shape[0]):
+            for y in range(matrix.shape[1]):
+                if len(matrix.shape) == 3:
+                    for z in range(matrix.shape[2]):
+                        counts[matrix[x][y][z]] += 1
+                else:
+                    counts[matrix[x][y]] += 1
+
+        lan = len(counts.keys())
+
+        infogehalt = math.log(lan)
+
+        return infogehalt
+
+
+    def quellenredundanz(self, matrix):
+
+        return (nvm.entropie(matrix) - nvm.entscheidungsgehalt(matrix))
 
 
 if __name__ == '__main__':
 
-    nvm = JPEG('/Users/jow/Dropbox/Forensik/Master/2.Semester/Datenkompression/Vorlesung/Testbilder/Lena/4.2.04.png')
-    #res = nvm.getImage()
-    res = nvm.crop()
+    nvm = JPEG('/Users/Paul/Desktop/Master/2. Semester Master/Datenkompression/4.2.04.png')
 
-    #res = nvm.dct(res)
-    res = nvm.hinTransformation(res)
+    result = nvm.crop()
+    result = nvm.hinTransformation(result)
 
-    res = nvm.dct(res)
+    # [R][G][B] - [Y][Cb][Cr]
 
-    for i in range(8):
-        for j in range(8):
-            print(res[8*0+i][8*0+j][0])
+    print nvm.entropie(result[:,:,0])
+    print nvm.entscheidungsgehalt(result[:,:,0])
+    print nvm.quellenredundanz(result[:,:,0])
 
-    res = nvm.dequant(res)
-    res = nvm.inversedct(res)
+    result = nvm.dct(result)
 
-    print('--------')
+    print nvm.entropie(result)
+    print nvm.entscheidungsgehalt(result)
+    print nvm.quellenredundanz(result)
 
-    for i in range(8):
-        for j in range(8):
-            print(res[8 * 0 + i][8 * 0 + j][0])
-
-    res = nvm.rueckTransformation(res)
-
-    #res[:, :, [0,2]] = 0
-
-    nvm.showState(res)
