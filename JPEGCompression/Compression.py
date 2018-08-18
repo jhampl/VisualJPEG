@@ -4,6 +4,8 @@ import numpy as np
 from PIL import Image
 import math
 from collections import Counter
+import matplotlib.pyplot as plt
+import os
 
 np.set_printoptions(threshold=np.nan)
 
@@ -61,8 +63,42 @@ class JPEG:
                 cropped_image[rownum][colnum] = image[rownum][colnum]
         return cropped_image
 
-
     def dct(self, matrix):
+
+        helpMat = np.zeros((matrix.shape[0], matrix.shape[1], matrix.shape[2]))
+
+        for a in range(0, matrix.shape[0], 8):
+            for b in range(0, matrix.shape[1], 8):
+                for z in range(0, matrix.shape[2]):
+                    for u in range(0, 8):
+                        for v in range(0, 8):
+
+                            help = 0
+
+                            for x in range(0, 8):
+                                for y in range(0, 8):
+                                    help += matrix[a + x][b + y][z] * math.cos(((2 * x + 1) * u * math.pi) / 16) * \
+                                            math.cos(((2 * y + 1) * v * math.pi) / 16)
+
+                            if u == 0:
+                                cu = 1 / math.sqrt(2)
+                            else:
+                                cu = 1
+                            if v == 0:
+                                cv = 1 / math.sqrt(2)
+                            else:
+                                cv = 1
+
+                            help = help * 1 / 4 * cu * cv
+
+                            helpMat[a + u][b + v][z] = help
+
+        return np.array(helpMat)
+
+    def quant(self, matrix):
+
+        help = np.zeros((512, 512, 3))
+
         QY = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
                        [12, 12, 14, 19, 26, 48, 60, 55],
                        [14, 13, 16, 24, 40, 57, 69, 56],
@@ -81,45 +117,18 @@ class JPEG:
                        [99, 99, 99, 99, 99, 99, 99, 99],
                        [99, 99, 99, 99, 99, 99, 99, 99]])
 
-        helpMat = np.zeros((8, 8, 1))
-
-        for a in range(0, matrix.shape[0], 8):
-            for b in range(0, matrix.shape[1], 8):
-                for z in range(0,3):
+        for x in range(0, matrix.shape[0], 8):
+            for y in range(0, matrix.shape[1], 8):
+                for z in range(matrix.shape[2]):
                     for u in range(0, 8):
                         for v in range(0, 8):
 
-                            help = 0
-
-                            for x in range(0,8):
-                                for y in range(0,8):
-                                    help += matrix[a+x][b+y][z] * math.cos(((2 * x + 1) * u * math.pi) / 16) * \
-                                                                    math.cos(((2 * y + 1) * v * math.pi) / 16)
-
-                            if u == 0:
-                                cu = 1 / math.sqrt(2)
-                            else:
-                                cu = 1
-                            if v == 0:
-                                cv = 1 / math.sqrt(2)
-                            else:
-                                cv = 1
-
-                            help = help * 1/4 * cu * cv
-
-                           # matrix[a+u][b+v][z] = help
-
-                            #print(help)
                             if z == 0:
-                                helpMat[u][v] = int(round(help/QY[u][v]))
+                                help[x + u][y + v][z] = int(round(matrix[x + u][y + v][z] / QY[u][v]))
                             else:
-                                helpMat[u][v] = int(round(help/QC[u][v]))
+                                help[x + u][y + v][z] = int(round(matrix[x + u][y + v][z] / QC[u][v]))
 
-                    for r in range(0, 8):
-                        for s in range(0, 8):
-                            matrix[a+r][b+s][z] = helpMat[r][s]
-        return matrix
-
+        return np.array(help)
 
     def dequant(self, matrix):
         QY = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
@@ -235,22 +244,47 @@ class JPEG:
         return (nvm.entropie(matrix) - nvm.entscheidungsgehalt(matrix))
 
 
+    def histogram(self, matrix, title):
+
+        array = []
+
+        for x in range(matrix.shape[0]):
+            for y in range(matrix.shape[1]):
+                if len(matrix.shape) == 2:
+                    array.append(matrix[x][y])
+                else:
+                    for z in range(matrix.shape[2]):
+                        array.append(matrix[x][y][z])
+
+        plt.hist(array, bins='auto')
+        plt.title("Histogram" + " " + title)
+        plt.show()
+
+    def MSE(self,Y, YH):
+        return np.square(Y - YH).mean()
+
+
+    def PSNR(self, Y, YH):
+        max_val = 255
+        mse = self.MSE(Y, YH)
+        psnr = 20*math.log(max_val,10) - 10*math.log(mse, 10)
+
+        return psnr
+
+    def compFak(self, Y, YH):
+
+        beginn = os.path.getsize(Y)
+        ende = os.path.getsize(YH)
+        print(beginn)
+        print(ende)
+
+        return (ende / beginn)
+
+    def save(self, matrix, path):
+
+        pic = Image.fromarray(np.uint8(matrix))
+        pic.save(path)
+
 if __name__ == '__main__':
 
-    nvm = JPEG('/Users/Paul/Desktop/Master/2. Semester Master/Datenkompression/4.2.04.png')
-
-    result = nvm.crop()
-    result = nvm.hinTransformation(result)
-
-    # [R][G][B] - [Y][Cb][Cr]
-
-    print nvm.entropie(result[:,:,0])
-    print nvm.entscheidungsgehalt(result[:,:,0])
-    print nvm.quellenredundanz(result[:,:,0])
-
-    result = nvm.dct(result)
-
-    print nvm.entropie(result)
-    print nvm.entscheidungsgehalt(result)
-    print nvm.quellenredundanz(result)
-
+    nvm = JPEG('I:\misc/4.2.04.png')                                                                                    # Instanz - Bild wird Konstruktor übergeben
