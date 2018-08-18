@@ -7,8 +7,26 @@
 # WARNING! All changes made in this file will be lost!
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import QFileDialog
+from Compression import JPEG
 
 class Ui_MainWindow(object):
+
+    nvm = ''
+
+    def new( self ):
+
+        fileName, _ = QFileDialog.getOpenFileName(self.menuNew,"", "../Testbilder", "", "PNG (*.png)")
+        self.nvm = JPEG(fileName)
+        self.centralwidget.setEnabled(True)
+    
+    def clicked( self, item ):
+
+        if item.text() == 'RGB':
+           matrix = nvm.rgb 
+           nvm.zeige_histogramm(item.text(), matrix)
+
+
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(1019, 614)
@@ -52,6 +70,7 @@ class Ui_MainWindow(object):
         self.horizontalLayout.setObjectName("horizontalLayout")
         self.listWidget = QtWidgets.QListWidget(self.centralwidget)
         self.listWidget.setObjectName("listWidget")
+        self.listWidget.currentItemChanged.connect(self.clicked)
         item = QtWidgets.QListWidgetItem()
         self.listWidget.addItem(item)
         item = QtWidgets.QListWidgetItem()
@@ -120,7 +139,7 @@ class Ui_MainWindow(object):
         self.label_4.setObjectName("label_4")
         self.formLayout_2.setWidget(1, QtWidgets.QFormLayout.LabelRole, self.label_4)
         self.label_5 = QtWidgets.QLabel(self.tab)
-        self.label_5.setEnabled(False)
+        # self.label_5.setEnabled(False)
         self.label_5.setObjectName("label_5")
         self.formLayout_2.setWidget(2, QtWidgets.QFormLayout.LabelRole, self.label_5)
         self.label_quellenredundanz = QtWidgets.QLabel(self.tab)
@@ -179,6 +198,7 @@ class Ui_MainWindow(object):
         self.actionQuelle.setEnabled(False)
         self.actionQuelle.setObjectName("actionQuelle")
         self.menuNew.addAction(self.actionNeu)
+        self.actionNeu.triggered.connect(self.new)
         self.menuNew.addAction(self.actionQuelle)
         self.menuNew.addSeparator()
         self.menuNew.addAction(self.actionSchliessen)

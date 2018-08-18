@@ -7,15 +7,31 @@ from collections import Counter
 import seaborn as davi
 from shutil import copyfile
 import os
+import matplotlib.pyplot as plt
 
 np.set_printoptions(threshold=np.nan)
 
+lRGB, lYCbCr, lYCbCr_sub, lDCT, lDCT_quant, lDCT_dequant, lIDCT, lYCbCr_over, lJPG = 'RGB', 'YCbCr', 'YCbCr_sub', 'DCT', 'DCT_quant', 'lDCT_dequant', 'lIDCT', 'lYCbCr_over', 'JPG' 
+labels = [lRGB, lYCbCr, lYCbCr_sub, lDCT, lDCT_quant, lDCT_dequant, lIDCT, lYCbCr_over, lJPG]
+lR, lG, lB, lY, lCb, lCr = 'R', 'G', 'B', 'Y', 'Cb', 'Cr'
 
 class JPEG:
-
+        
     def __init__(self, img):
         self.img = np.array(Image.open(img))
         self.ordner = 'Ergebnisse'
+
+        self.rgb = self.crop() 
+        self.ycbcr = self.hinTransformation(self.rgb)
+        self.sub = self.unterabtastung(self.ycbcr)
+        self.dct = self.dct(self.sub)
+        self.dct_quant = self.quant(self.dct)
+        self.dct_dequant = self.dequant(self.dct_quant)
+        self.idct = self.inversedct(self.dct_dequant)
+        self.ueb = self.ueberabstastung(self.idct)
+        self.jpg = self.rueckTransformation(self.ueb)
+
+        self.schritte = [ rgb, ycbcr, sub, dct, dct_quant, dct_dequant, idct, ueb, jpg ] 
 
 
     def hinTransformation(self, matrix):
@@ -27,6 +43,26 @@ class JPEG:
                     [matrix[a][b][0], matrix[a][b][1], matrix[a][b][2]]), matrix[a][b])
         matrix[:, :, [1, 2]] += 128
         return np.round(matrix)
+
+    def unterabtastung(self, matrix):
+        y = matrix[:,:,0]
+        cb = matrix[::2,::2,1]
+        cr = matrix[::2,::2,2]
+        
+        return y, cb, cr
+
+
+    def ueberabstastung(self,matrix):
+        y = matrix[0]
+        cb = matrix[1]
+        cr = matrix[2]
+        interp = np.zeros((y.shape[0], y.shape[1], 3))
+
+        interp[:,:,0] = y
+        interp[:,:,1] = cb.repeat(2, axis = 0).repeat(2, axis = 1)
+        interp[:,:,2] = cr.repeat(2, axis = 0).repeat(2, axis = 1)
+
+        return interp
 
 
     def rueckTransformation(self, matrix):
@@ -70,7 +106,78 @@ class JPEG:
         return cropped_image
 
 
-    def dct(self, matrix):
+    def dct(self, matrizen):
+
+        for z in range(0, len(matrizen)):
+            matrix = matrizen[z]
+            helpMat = np.zeros((matrix.shape[0], matrix.shape[1]))
+            for a in range(0, matrix.shape[0], 8):
+                for b in range(0, matrix.shape[1], 8):
+                    for u in range(0, 8):
+                        for v in range(0, 8):
+
+                            help = 0
+
+                            for x in range(0, 8):
+                                for y in range(0, 8):
+                                    help += matrix[a+x][b+y] * math.cos(((2 * x + 1) * u * math.pi) / 16) * \
+                                        math.cos(
+                                            ((2 * y + 1) * v * math.pi) / 16)
+
+                            if u == 0:
+                                cu = 1 / math.sqrt(2)
+                            else:
+                                cu = 1
+                            if v == 0:
+                                cv = 1 / math.sqrt(2)
+                            else:
+                                cv = 1
+
+                            help = help * 1/4 * cu * cv
+
+                            # matrix[a+u][b+v][z] = help
+
+                        for r in range(0, 8):
+                            for s in range(0, 8):
+                                matrix[a+r][b+s] = helpMat[r][s]
+        return matrizen
+
+
+    def quant(self, matrizen):
+
+        QY = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
+                       [12, 12, 14, 19, 26, 48, 60, 55],
+                       [14, 13, 16, 24, 40, 57, 69, 56],
+                       [14, 17, 22, 29, 51, 87, 80, 62],
+                       [18, 22, 37, 56, 68, 109, 103, 77],
+                       [24, 35, 55, 64, 81, 104, 113, 92],
+                       [49, 64, 78, 87, 103, 121, 120, 101],
+                       [72, 92, 95, 98, 112, 100, 103, 99]])
+
+        QC = np.array([[17, 18, 24, 47, 99, 99, 99, 99],
+                       [18, 21, 26, 66, 99, 99, 99, 99],
+                       [24, 26, 56, 99, 99, 99, 99, 99],
+                       [47, 66, 99, 99, 99, 99, 99, 99],
+                       [99, 99, 99, 99, 99, 99, 99, 99],
+                       [99, 99, 99, 99, 99, 99, 99, 99],
+                       [99, 99, 99, 99, 99, 99, 99, 99],
+                       [99, 99, 99, 99, 99, 99, 99, 99]])
+        
+        for z in range(0, len(matrizen)):
+            matrix = matrizen[z]
+            helpMat = np.zeros((matrix.shape[0], matrix.shape[1]))
+            for a in range(0, matrix.shape[0], 8):
+                for b in range(0, matrix.shape[1], 8):
+                    for x in range(0, 8):
+                        for y in range(0, 8):
+                            if z == 0:
+                                helpMat[u][v] = int(round(help/QY[u][v]))
+                            else:
+                                helpMat[u][v] = int(round(help/QC[u][v]))
+        return matrizen
+
+
+    def dctquant(self, matrizen):
         QY = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
                        [12, 12, 14, 19, 26, 48, 60, 55],
                        [14, 13, 16, 24, 40, 57, 69, 56],
@@ -91,9 +198,10 @@ class JPEG:
 
         helpMat = np.zeros((8, 8, 1))
 
-        for a in range(0, matrix.shape[0], 8):
-            for b in range(0, matrix.shape[1], 8):
-                for z in range(0, 3):
+        for z in range(0, len(matrizen)):
+            matrix = matrizen[z]
+            for a in range(0, matrix.shape[0], 8):
+                for b in range(0, matrix.shape[1], 8):
                     for u in range(0, 8):
                         for v in range(0, 8):
 
@@ -101,7 +209,7 @@ class JPEG:
 
                             for x in range(0, 8):
                                 for y in range(0, 8):
-                                    help += matrix[a+x][b+y][z] * math.cos(((2 * x + 1) * u * math.pi) / 16) * \
+                                    help += matrix[a+x][b+y] * math.cos(((2 * x + 1) * u * math.pi) / 16) * \
                                         math.cos(
                                             ((2 * y + 1) * v * math.pi) / 16)
 
@@ -126,11 +234,11 @@ class JPEG:
 
                     for r in range(0, 8):
                         for s in range(0, 8):
-                            matrix[a+r][b+s][z] = helpMat[r][s]
-        return matrix
+                            matrix[a+r][b+s] = helpMat[r][s]
+        return matrizen
 
 
-    def dequant(self, matrix):
+    def dequant(self, matrizen):
         QY = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
                        [12, 12, 14, 19, 26, 48, 60, 55],
                        [14, 13, 16, 24, 40, 57, 69, 56],
@@ -149,26 +257,28 @@ class JPEG:
                        [99, 99, 99, 99, 99, 99, 99, 99],
                        [99, 99, 99, 99, 99, 99, 99, 99]])
 
-        for a in range(0, matrix.shape[0], 8):
-            for b in range(0, matrix.shape[1], 8):
-                for z in range(0, 3):
+        for z in range(0, len(matrizen)):
+            matrix = matrizen[z]
+            for a in range(0, matrix.shape[0], 8):
+                for b in range(0, matrix.shape[1], 8):
                     for x in range(0, 8):
                         for y in range(0, 8):
                             if z == 0:
-                                matrix[a+x][b+y][z] = matrix[a +
-                                                             x][b+y][z]*QY[x][y]
+                                matrix[a+x][b+y] = matrix[a +
+                                                             x][b+y]*QY[x][y]
                             else:
-                                matrix[a+x][b+y][z] = matrix[a +
-                                                             x][b+y][z]*QC[x][y]
-        return matrix
+                                matrix[a+x][b+y] = matrix[a +
+                                                             x][b+y]*QC[x][y]
+        return matrizen
 
 
-    def inversedct(self, matrix):
+    def inversedct(self, matrizen):
         helpMat = np.zeros((8, 8, 1))
 
-        for a in range(0, matrix.shape[0], 8):
-            for b in range(0, matrix.shape[1], 8):
-                for z in range(0, 3):
+        for z in range(0, len(matrizen)): 
+            matrix = matrizen[z]
+            for a in range(0, matrix.shape[0], 8):
+                for b in range(0, matrix.shape[1], 8):
                     for x in range(0, 8):
                         for y in range(0, 8):
 
@@ -185,16 +295,16 @@ class JPEG:
                                     else:
                                         cv = 1
 
-                                    help += cu * cv * matrix[a+u][b+v][z] * math.cos(
+                                    help += cu * cv * matrix[a+u][b+v] * math.cos(
                                         ((2 * x + 1) * u * math.pi) / 16) * math.cos(((2 * y + 1) * v * math.pi) / 16)
 
                             helpMat[x][y] = help * 1/4
 
-                    for x in range(0, 8):
-                        for y in range(0, 8):
-                            matrix[a+x][b+y][z] = helpMat[x][y]
+                        for x in range(0, 8):
+                            for y in range(0, 8):
+                                matrix[a+x][b+y] = helpMat[x][y]
 
-        return matrix
+        return matrizen
 
 
     def entropie(self, matrix):
@@ -230,7 +340,7 @@ class JPEG:
             for y in range(matrix.shape[1]):
                 if len(matrix.shape) == 3:
                     for z in range(matrix.shape[2]):
-                        counts[matrix[x][y][z]] += 1
+                        counts[matrix[x][y]] += 1
                 else:
                     counts[matrix[x][y]] += 1
 
@@ -246,71 +356,132 @@ class JPEG:
         return (nvm.entropie(matrix) - nvm.entscheidungsgehalt(matrix))
 
 
-    def drucke_histogramm(label, array):
+    def drucke_histogramm(self, label, array):
 
-        plot = davi.distplot(array)
+        davi.set_style('whitegrid')
+        eindim = np.reshape(array, -1)
+        # print(eindim)
+        plot = davi.distplot(eindim)
         fig = plot.get_figure()
-        fig.savefig(pfad(label + '.png'))
+        # plt.show()
+        fig.savefig(self.pfad(label + '.png'))
+        plt.close(fig)
 
 
-    def drucke_bild(label, array):
+    def zeige_histogramm(self, label, array):
+
+        davi.set_style('whitegrid')
+        eindim = np.reshape(array, -1)
+        # print(eindim)
+        plot = davi.distplot(eindim)
+        fig = plot.get_figure()
+        plt.show()
+        # fig.savefig(self.pfad(label + '.png'))
+        plt.close(fig)
+
+
+    def drucke_bild(self, label, array):
 
         img = Image.fromarray(array, 'RGB')
-        img.save(pfad(label + '.png'))
+        img.save(self.pfad(label + '.png'))
 
 
     def pfad(self, datei):
 
-        return os.path.abspath(self.ordner + datei)
+        return os.path.abspath(self.ordner + '/' + datei)
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-    # Initialisierung
-    src = os.path.abspath('../Testbilder/Lena/4.2.04.png')
-    nvm = JPEG(src)
+    # # Initialisierung
+    # src = os.path.abspath('../Testbilder/Lena/4.2.04.png')
+    # nvm = JPEG(src)
 
-   # RGB Bild in Ergebnisse speichern
-    if not os.path.exists(nvm.ordner):
-        os.makedirs(nvm.ordner)
-    copyfile(src, nvm.pfad('rgb.png'))
+    # # Ordner erstellen
+    # if not os.path.exists(wurzel):
+        # os.makedirs(wurzel)
 
-    # RGB Histogramme erstellen
-    nvm.drucke_histogramm('R', nvm.image[:, :, 0])
-    nvm.drucke_histogramm('G', nvm.image[:, :, 1])
-    nvm.drucke_histogramm('B', nvm.image[:, :, 2])
+    # for ordner in labels:
+        # os.makedirs(wurzel + '/' + ordner)
 
-    # Farbraumtransformation
-    result = nvm.crop()
-    result = nvm.hinTransformation(result)
+   # # RGB Bild in Ergebnissen speichern
+    # copyfile(src, nvm.pfad('rgb.png'))
 
-    # YCbCr Histogramme erstellen
-    nvm.drucke_histogramm('Y', result[:, :, 0])
-    nvm.drucke_histogramm('Cb', result[:, :, 1])
-    nvm.drucke_histogramm('Cr', result[:, :, 2])
+    # rgb = nvm.crop() 
+    # ycbcr = nvm.hinTransformation(rgb)
+    # sub = nvm.unterabtastung(ycbcr)
+    # dct = nvm.dct(sub)
+    # dct_quant = nvm.quant(dct)
+    # dct_dequant = nvm.dequant(dct_quant)
+    # idct = nvm.inversedct(dct_dequant)
+    # ueb = nvm.ueberabstastung(idct)
+    # jpg = nvm.rueckTransformation(ueb)
 
-    # Maße errechnen und schreiben
-    # RGB Maße
-    line = 'Komponente\tEntropie\tEntscheidungsgehalt\tQuellenredundanz'
-    with open(nvm.pfad('RGB_daten.txt')) as daten:
-        daten.write(line)
+    # schritte = [ rgb, ycbcr, sub, dct, dct_quant, dct_dequant, idct, ueb, jpg ] 
+    
+    # for s in 0:len(schritte):
 
-    komp = 'Gesamt', 'Y', 'Cb', 'Cr'
-    for i in [':', 0, 1, 2]:
-        line += komp[i]
-        line += nvm.entropie(result[:, :, i])
-        line += nvm.entscheidungsgehalt(result[:, :, i])
-        line += nvm.quellenredunanz(result[:, :, i])
+        # ordner = wurzel + labels[s] 
 
-        with open(nvm.pfad('RGB_daten.txt')) as daten:
-            daten.write(line)
+        # if 0 < counter < 8:
+            # header = [ 'Gesamt', 'R', 'G', 'B' ]
 
-    # print nvm.entropie(result[:,:,0])
-    # print nvm.entscheidungsgehalt(result[:,:,0])
-    # print nvm.quellenredundanz(result[:,:,0])
+        # else:
+            # header = [ 'Gesamt', 'Y', 'Cb', 'Cr' ]
+            
+        # drucke_bild(label, matrix)
+        # drucke_histogramm
 
-    result = nvm.dct(result)
 
-    # print nvm.entropie(result)
-    # print nvm.entscheidungsgehalt(result)
-    # print nvm.quellenredundanz(result)
+    # # RGB Histogramme erstellen
+    # nvm.drucke_histogramm('R', nvm.img[:, :, 0])
+    # nvm.drucke_histogramm('G', nvm.img[:, :, 1])
+    # nvm.drucke_histogramm('B', nvm.img[:, :, 2])
+
+    # # Farbraumtransformation
+    # result = nvm.crop()
+    # result = nvm.hinTransformation(result)
+
+    # # YCbCr Histogramme erstellen
+    # nvm.drucke_histogramm('Y', result[:, :, 0])
+    # nvm.drucke_histogramm('Cb', result[:, :, 1])
+    # nvm.drucke_histogramm('Cr', result[:, :, 2])
+
+    # # Maße errechnen und schreiben
+    # # RGB Maße
+    # header = 'Komponente\tEntropie\tEntscheidungsgehalt\tQuellenredundanz'
+    # with open(nvm.pfad('RGB_daten.txt'), 'w+') as daten:
+        # daten.write(header)
+
+    # komps = 'Gesamt', 'Y', 'Cb', 'Cr'
+    # komp = '' 
+    # entrp = '' 
+    # entschg = '' 
+    # qllred = ''
+
+    # for i in [ -1, 0, 1, 2 ]:
+        # if i == -1:
+            # komp = komps[0]
+            # entrp = nvm.entropie(result[:, :, :])
+            # entschg = nvm.entscheidungsgehalt(result[:, :, :])
+            # qllred = nvm.quellenredundanz(result[:, :, :])
+
+        # else:
+            # komp = komps[i+1]
+            # entrp = nvm.entropie(result[:, :, i])
+            # entschg = nvm.entscheidungsgehalt(result[:, :, i])
+            # qllred = nvm.quellenredundanz(result[:, :, i])
+
+        # line = f'\n{komp}\t{entrp}\t{entschg}\t{qllred}'
+        # with open(nvm.pfad('RGB_daten.txt'), 'a+') as daten:
+            # daten.write(line)
+
+    # # print nvm.entropie(result[:,:,0])
+    # # print nvm.entscheidungsgehalt(result[:,:,0])
+    # # print nvm.quellenredundanz(result[:,:,0])
+
+    # result = nvm.dct(result)
+
+    # # print nvm.entropie(result)
+    # # print nvm.entscheidungsgehalt(result)
+    # # print nvm.quellenredundanz(result)
