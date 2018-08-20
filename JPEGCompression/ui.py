@@ -8,8 +8,15 @@
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog, QProgressBar, QWidget
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QPixmap, QImage
 from Compression import JPEG
+import qimage2ndarray
+import numpy as np
+from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
+import PIL as pil
+from PIL import Image, ImageQt
 
 JPEG_Kompression, RGB_Bild, Y_Bild, Cb_Bild, Cr_Bild, Y_DCT_Koeffizienten, Cb_DCT_Koeffizienten, Cr_DCT_Koeffizienten, Y_Quant_DCT_Koeffizienten, Cb_Quant_DCT_Koeffizienten, Cr_Quant_DCT_Koeffizienten, JPEG_RGB_Bild, Vergleich = "JPEG Kompression", "RGB Bild", "Y Bild", "Cb Bild", "Cr Bild", "Y DCT Koeffizienten", "Cb DCT Koeffizienten", "Cr DCT Koeffizienten", "Y Quant. DCT Koeffizienten", "Cb Quant. DCT Koeffizienten", "Cr Quant. DCT Koeffizienten", "JPEG RGB Bild", "Vergleich"
 
@@ -34,35 +41,42 @@ class Ui_MainWindow(object):
             return ''
 
         w = ProgressPopup()
-        w.setGeometry(QtCore.QRect(100, 100, 400, 200))
+        # w.setGeometry(QtCore.QRect(100, 100, 400, 200))
         w.show()
 
         self.nvm = JPEG(fileName)
+        self.histmaps = []
+        self.bildmaps = []
+
+        for i in range(0, len(self.nvm.werte)):
+            self.histmaps.append(self.nvm.histogramm(self.nvm.werte[i]))
+            self.bildmaps.append(self.nvm.drucke_bild(str(i), self.nvm.werte[i]))
+
+
         self.centralwidget.setEnabled(True)
 
     def clicked(self, item):
-
+        i = False
         index = werte.index(item.text())
 
-        matrix = self.nvm.werte[index-1]
+        matrix = self.nvm.werte[index]
 
         qll = self.nvm.quellenredundanz(matrix)
         entsg = self.nvm.entscheidungsgehalt(matrix)
         entr = self.nvm.entropie(matrix)
        
-        hist = self.nvm.drucke_tmp_histogramm(matrix)
-        bild = self.nvm.drucke_tmp_bild(matrix)
+        # hist = self.nvm.drucke_tmp_histogramm(matrix)
+        # bild = self.nvm.drucke_tmp_bild(matrix)
 
         self.label_entropie.setText(str(entr))
         self.label_quellenredundanz.setText(str(qll))
         # self.label_entscheidungsgehalt.setText(entsg)
 
-        pixmap = QPixmap(bild)
-        self.label_left.setPixmap(pixmap)
-            
-        pixmap = QPixmap(hist)
-        self.label_right.setPixmap(pixmap)
+        self.label_left.setPixmap(QPixmap(self.bildmaps[index]))
+        self.label_right.figure = self.histmaps[index]
 
+        self.label_right.draw()
+        i = True
         if index == len(werte) - 1:
             psnr = self.nvm.PSNR()
             compfak = self.nvm.compFak()
@@ -71,6 +85,21 @@ class Ui_MainWindow(object):
             self.label_psnr.setText(str(psnr))
             self.label_groesse.setText(str(compfak))
             
+
+    # def testColorMap(self, cmap):
+        # sp = SubplotParams(left=0., bottom=0., right=1., top=1.)
+        # fig = Figure((2.5,.2), subplotpars = sp)
+        # canvas = FigureCanvas(fig)
+        # ax = fig.add_subplot(111)
+        # gradient = np.linspace(0, 1, 256)
+        # gradient = np.vstack((gradient, gradient))
+        # ax.set_axis_off()
+        # canvas.draw()
+        # size = canvas.size()
+        # width, height = size.width(), size.height()
+        # im = QImage(canvas.buffer_rgba(), width, height, QImage.Format_ARGB32)
+        # return QPixmap(im)
+
 
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -189,9 +218,9 @@ class Ui_MainWindow(object):
                                            QtWidgets.QSizePolicy.Minimum,
                                            QtWidgets.QSizePolicy.Expanding)
         self.horizontalLayout_2.addItem(spacerItem)
-        self.label_right = QtWidgets.QLabel(self.tab)
-        self.label_right.setFrameShape(QtWidgets.QFrame.StyledPanel)
-        self.label_right.setText("")
+
+        self.figure = Figure()
+        self.label_right = FigureCanvas(self.figure)
         self.label_right.setObjectName("label_right")
         self.horizontalLayout_2.addWidget(self.label_right)
         self.horizontalLayout_2.setStretch(0, 50)

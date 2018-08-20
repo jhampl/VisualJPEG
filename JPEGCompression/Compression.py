@@ -16,6 +16,10 @@ class JPEG:
         self.img = np.array(Image.open(img))
         self.img_path = img
 
+        self.ordner = 'Ergebnisse'
+        if not os.path.exists(self.ordner):
+                os.makedirs(self.ordner)
+
         # TODO add downsampling
         self.rgb = self.crop()
         self.ycbcr = self.hinTransformation(self.rgb)
@@ -25,48 +29,51 @@ class JPEG:
         self.idct = self.inversedct(self.dct_dequant)
         self.jpg = self.rueckTransformation(self.idct)
 
-        self.rgb_pfad = self.drucke_bild('rgb', self.rgb)
-        self.jpg_pfad = self.drucke_bild('jpg', self.jpg)
+#         self.rgb_pfad = self.drucke_bild('rgb', self.rgb)
+#         self.jpg_pfad = self.drucke_bild('jpg', self.jpg)
 
-        self.werte = [
-            self.rgb, self.ycbcr[:, :, 0], self.ycbcr[:, :, 1],
-            self.ycbcr[:, :, 2], self.dct[:, :, 0], self.dct[:, :, 1],
-            self.dct[:, :, 2], self.dct_quant[:, :, 0],
-            self.dct_quant[:, :, 1], self.dct_quant[:, :, 2],
-            self.dct_dequant[:, :, 0], self.dct_dequant[:, :, 1],
-            self.dct_dequant[:, :, 2], self.idct[:, :, 0], self.idct[:, :, 1],
-            self.idct[:, :, 2], self.jpg
-        ]
+        self.werte = [ self.rgb, self.ycbcr[:, :, 0], self.ycbcr[:, :, 1], self.ycbcr[:, :, 2] ]
+#         self.werte = [
+            # self.rgb, self.ycbcr[:, :, 0], self.ycbcr[:, :, 1],
+            # self.ycbcr[:, :, 2], self.dct[:, :, 0], self.dct[:, :, 1],
+            # self.dct[:, :, 2], self.dct_quant[:, :, 0],
+            # self.dct_quant[:, :, 1], self.dct_quant[:, :, 2],
+            # self.dct_dequant[:, :, 0], self.dct_dequant[:, :, 1],
+            # self.dct_dequant[:, :, 2], self.idct[:, :, 0], self.idct[:, :, 1],
+            # self.idct[:, :, 2], self.jpg
+        # ]
 
     def hinTransformation(self, matrix):
+        nmatrix = matrix.copy()
         ycbcr = np.array([[.299, .587, .114], [-.169, -.331, .5],
                           [.5, -.419, -.081]])
-        for a in range(matrix.shape[0]):
-            for b in range(matrix.shape[1]):
+        for a in range(nmatrix.shape[0]):
+            for b in range(nmatrix.shape[1]):
                 np.matmul(
                     ycbcr,
                     np.array(
-                        [matrix[a][b][0], matrix[a][b][1], matrix[a][b][2]]),
-                    matrix[a][b])
-        matrix[:, :, [1, 2]] += 128
-        return np.round(matrix)
+                        [nmatrix[a][b][0], nmatrix[a][b][1], nmatrix[a][b][2]]),
+                    nmatrix[a][b])
+        nmatrix[:, :, [1, 2]] += 128
+        return np.round(nmatrix)
 
     def rueckTransformation(self, matrix):
+        nmatrix = matrix.copy()
         ycbcr = np.array([[1, 0, 1.402], [1, -.34414, -.71414], [1, 1.722, 0]])
-        matrix[:, :, [1, 2]] -= 128
+        nmatrix[:, :, [1, 2]] -= 128
 
-        for a in range(matrix.shape[0]):
-            for b in range(matrix.shape[1]):
+        for a in range(nmatrix.shape[0]):
+            for b in range(nmatrix.shape[1]):
                 np.matmul(
                     ycbcr,
                     np.array(
-                        [matrix[a][b][0], matrix[a][b][1], matrix[a][b][2]]),
-                    matrix[a][b])
+                        [nmatrix[a][b][0], nmatrix[a][b][1], nmatrix[a][b][2]]),
+                    nmatrix[a][b])
 
-        np.putmask(matrix, matrix > 255, 255)
-        np.putmask(matrix, matrix < 0, 0)
+        np.putmask(nmatrix, nmatrix > 255, 255)
+        np.putmask(nmatrix, nmatrix < 0, 0)
 
-        return matrix
+        return nmatrix
 
     def showState(self, matrix):
         im = Image.fromarray(np.uint8(matrix))
@@ -194,6 +201,7 @@ class JPEG:
         return matrix
 
     def inversedct(self, matrix):
+        nmatrix = matrix.copy()
         helpMat = np.zeros((8, 8, 1))
 
         for a in range(0, matrix.shape[0], 8):
@@ -215,7 +223,7 @@ class JPEG:
                                     else:
                                         cv = 1
 
-                                    help += cu * cv * matrix[a +
+                                    help += cu * cv * nmatrix[a +
                                                              u][b +
                                                                 v][z] * math.cos(
                                                                     ((2 * x +
@@ -231,9 +239,9 @@ class JPEG:
 
                     for x in range(0, 8):
                         for y in range(0, 8):
-                            matrix[a + x][b + y][z] = helpMat[x][y]
+                            nmatrix[a + x][b + y][z] = helpMat[x][y]
 
-        return matrix
+        return nmatrix
 
     def entropie(self, matrix):
 
@@ -282,22 +290,6 @@ class JPEG:
 
         return (self.entropie(matrix) - self.entscheidungsgehalt(matrix))
 
-    def histogram(self, matrix, title):
-
-        array = []
-
-        for x in range(matrix.shape[0]):
-            for y in range(matrix.shape[1]):
-                if len(matrix.shape) == 2:
-                    array.append(matrix[x][y])
-                else:
-                    for z in range(matrix.shape[2]):
-                        array.append(matrix[x][y][z])
-
-        plt.hist(array, bins='auto')
-        plt.title("Histogram" + " " + title)
-        plt.show()
-
     def MSE(self):
         return self.MSE_(self.rgb, self.jpg)
 
@@ -336,34 +328,31 @@ class JPEG:
         pic = Image.fromarray(np.uint8(matrix))
         pic.save(path)
 
-    def drucke_tmp_histogramm(self, array):
+    def histogramm(self, array):
 
-        return self.drucke_histogramm('tmphist', array)
-    
-    def drucke_histogramm(self, label, array):
-
+        plt.close('all')
         davi.set_style('whitegrid')
-        eindim = np.reshape(array, -1)
-        bildpfad = self.pfad(label + '.png')
+        colors = [ 'r', 'g', 'b' ]
+        fig = []
 
         if len(array.shape) == 3:
-            figs = [ davi.distplot(np.reshape(array[:,:,0], -1)).get_figure(), 
-                    davi.distplot(np.reshape(array[:,:,1], -1)).get_figure(), 
-                    davi.distplot(np.reshape(array[:,:,2], -1)).get_figure() ]
-            fig = figs[2]
-            fig.savefig(bildpfad)
-            for fig in figs:
-                plt.close(fig)
-        
+            eindim = [ np.reshape(array[0], -1), np.reshape(array[1], -1), np.reshape(array[2], -1) ] 
+
         else:
-            # print(eindim)
-            plot = davi.distplot(eindim)
-            fig = plot.get_figure()
-            # plt.show()
-            fig.savefig(bildpfad)
-            plt.close(fig)
-        
+            eindim = [ np.reshape(array, -1) ]
+
+        for i in range(0, len(eindim)):
+            plot = davi.distplot(eindim[i], bins='auto', color=colors[i])
+            fig.append(plot.get_figure())
+            
+
+        return fig[0]
+
+    def speichere_histogramm( self, label,  hist):
+        bildpfad = self.pfad(label + '.png')
+        fig.savefig(bildpfad)
         return bildpfad
+
 
     def zeige_histogramm(self, label, array):
 
@@ -376,20 +365,16 @@ class JPEG:
         # fig.savefig(self.pfad(label + '.png'))
         plt.close(fig)
 
-    def drucke_tmp_bild(self, array):
-
-        return self.drucke_bild('tmp', array)
-
     def drucke_bild(self, label, array):
 
-        img = Image.fromarray(array, 'RGB')
+        img = Image.fromarray(array.astype('uint8'))
         bildpfad = self.pfad(label + '.png')
         img.save(bildpfad)
         return bildpfad
 
     def pfad(self, datei):
 
-        return os.path.abspath('./' + datei)
+        return os.path.abspath( self.ordner + '/' + datei)
 
 if __name__ == '__main__':
 
