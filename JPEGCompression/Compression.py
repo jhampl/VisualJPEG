@@ -7,8 +7,10 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import os
 import seaborn as davi
+import time
 
 np.set_printoptions(threshold=np.nan)
+ordner = 'Ergebnisse'
 
 
 class JPEG:
@@ -16,9 +18,8 @@ class JPEG:
         self.img = np.array(Image.open(img))
         self.img_path = img
 
-        self.ordner = 'Ergebnisse'
-        if not os.path.exists(self.ordner):
-                os.makedirs(self.ordner)
+        if not os.path.exists(ordner):
+                os.makedirs(ordner)
 
         # TODO add downsampling
         self.rgb = self.crop()
@@ -29,19 +30,20 @@ class JPEG:
         self.idct = self.inversedct(self.dct_dequant)
         self.jpg = self.rueckTransformation(self.idct)
 
-#         self.rgb_pfad = self.drucke_bild('rgb', self.rgb)
-#         self.jpg_pfad = self.drucke_bild('jpg', self.jpg)
+        self.rgb_pfad = drucke_bild('rgb', self.rgb)
+        self.jpg_pfad = drucke_bild('jpg', self.jpg)
 
-        self.werte = [ self.rgb, self.ycbcr[:, :, 0], self.ycbcr[:, :, 1], self.ycbcr[:, :, 2] ]
-#         self.werte = [
-            # self.rgb, self.ycbcr[:, :, 0], self.ycbcr[:, :, 1],
-            # self.ycbcr[:, :, 2], self.dct[:, :, 0], self.dct[:, :, 1],
-            # self.dct[:, :, 2], self.dct_quant[:, :, 0],
-            # self.dct_quant[:, :, 1], self.dct_quant[:, :, 2],
-            # self.dct_dequant[:, :, 0], self.dct_dequant[:, :, 1],
-            # self.dct_dequant[:, :, 2], self.idct[:, :, 0], self.idct[:, :, 1],
-            # self.idct[:, :, 2], self.jpg
-        # ]
+        self.werte = [
+            self.rgb, self.rgb[:, :, 0], self.rgb[:, :, 1],
+            self.rgb[:, :, 2], self.ycbcr[:, :, 0], self.ycbcr[:, :, 1],
+            self.ycbcr[:, :, 2], self.dct[:, :, 0], self.dct[:, :, 1],
+            self.dct[:, :, 2], self.dct_quant[:, :, 0],
+            self.dct_quant[:, :, 1], self.dct_quant[:, :, 2],
+            self.dct_dequant[:, :, 0], self.dct_dequant[:, :, 1],
+            self.dct_dequant[:, :, 2], self.idct[:, :, 0], self.idct[:, :, 1],
+            self.idct[:, :, 2], self.jpg, self.jpg[:, :, 0], self.jpg[:, :, 1],
+            self.jpg[:, :, 2] 
+        ]
 
     def hinTransformation(self, matrix):
         nmatrix = matrix.copy()
@@ -301,12 +303,12 @@ class JPEG:
 
     def PSNR_(self, Y, YH):
         max_val = 255
-        mse = self.MSE(Y, YH)
+        mse = self.MSE_(Y, YH)
         psnr = 20 * math.log(max_val, 10) - 10 * math.log(mse, 10)
 
         return psnr
 
-    def groessen():
+    def groessen(self):
         rgb_groesse = os.path.getsize(self.rgb_pfad)
         jpg_groesse = os.path.getsize(self.jpg_pfad)
 
@@ -314,7 +316,7 @@ class JPEG:
 
     def compFak(self):
         rgb_groesse, jpg_groesse = self.groessen()
-        return self.compFak_(rgb_groesse, jpg_groesse)
+        return (jpg_groesse / rgb_groesse)
 
 
     def compFak_(self, a, b):
@@ -328,28 +330,8 @@ class JPEG:
         pic = Image.fromarray(np.uint8(matrix))
         pic.save(path)
 
-    def histogramm(self, array):
-
-        plt.close('all')
-        davi.set_style('whitegrid')
-        colors = [ 'r', 'g', 'b' ]
-        fig = []
-
-        if len(array.shape) == 3:
-            eindim = [ np.reshape(array[0], -1), np.reshape(array[1], -1), np.reshape(array[2], -1) ] 
-
-        else:
-            eindim = [ np.reshape(array, -1) ]
-
-        for i in range(0, len(eindim)):
-            plot = davi.distplot(eindim[i], bins='auto', color=colors[i])
-            fig.append(plot.get_figure())
-            
-
-        return fig[0]
-
     def speichere_histogramm( self, label,  hist):
-        bildpfad = self.pfad(label + '.png')
+        bildpfad = pfad(label + '.png')
         fig.savefig(bildpfad)
         return bildpfad
 
@@ -358,25 +340,36 @@ class JPEG:
 
         davi.set_style('whitegrid')
         eindim = np.reshape(array, -1)
-        # print(eindim)
         plot = davi.distplot(eindim)
         fig = plot.get_figure()
         plt.show()
-        # fig.savefig(self.pfad(label + '.png'))
+        # fig.savefig(pfad(label + '.png'))
         plt.close(fig)
 
-    def drucke_bild(self, label, array):
 
-        img = Image.fromarray(array.astype('uint8'))
-        bildpfad = self.pfad(label + '.png')
-        img.save(bildpfad)
-        return bildpfad
+def pfad(datei):
 
-    def pfad(self, datei):
+    return os.path.abspath( ordner + '/' + datei)
 
-        return os.path.abspath( self.ordner + '/' + datei)
+def drucke_bild( label, array):
+
+    img = Image.fromarray(array.astype('uint8'))
+    bildpfad = pfad(label + '.png')
+    img.save(bildpfad)
+    return bildpfad
+
+
+def histogramm(array):
+
+    plt.close('all')
+    davi.set_style('whitegrid')
+
+    eindim = np.reshape(array, -1)
+
+    plot = davi.distplot(eindim)
+    fig= plot.get_figure()
+
+    return fig
 
 if __name__ == '__main__':
-
-    nvm = JPEG(
-        'I:\misc/4.2.04.png')  # Instanz - Bild wird Konstruktor übergeben
+    pass
