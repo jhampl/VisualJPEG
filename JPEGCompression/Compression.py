@@ -10,10 +10,10 @@ import seaborn as davi
 from multiprocessing import Pool
 import sys
 from itertools import groupby
+import pickle
 
 np.set_printoptions(threshold=np.nan)
 ordner = 'Ergebnisse'
-
 
 def komprimiere(pfad):
 
@@ -31,7 +31,7 @@ def komprimiere(pfad):
 
     # Paralleles Verarbeiten der Bildkomponenten,
     # siehe Methode "_komprimiereKomponent"
-    pool = Pool(5)
+    pool = Pool(3)
     komponente = [[ycbcr[:,:,0], 0], [ycbcr[:,:,1], 1], [ycbcr[:,:,2], 2]]
     verarb_komponente = pool.map(_komprimiereKomponent, komponente)
 
@@ -48,14 +48,24 @@ def komprimiere(pfad):
     idct = reihe(6)
     ycbcr_up = reihe(7)
 
+    print(type(rgb), rgb.dtype, rgb.shape, groesse(rgb), groesse(rgb[:,:,0]))
+    # print(groesse(ycbcr[0]))
+    # print(groesse(ycbcr_sub[0]))
+    # print(groesse(dct[0]))
+    print(groesse(dct_quant[0]), groesse(dct_quant), type(dct_quant), dct_quant[0].dtype, dct_quant[0].shape)
+    # print(groesse(dct_cod[0]))
+    # print(groesse(dct_decod))
     # Ruecktransformation in RGB
     jpg = rueckTransformation(ycbcr_up)
 
-    rgb_pfad = drucke_bild('png', rgb)
-    jpg_pfad = drucke_bild('jpg', jpg)
+    print(type(jpg), jpg.dtype, jpg.shape, groesse(jpg), groesse(jpg[:,:,0]))
+    rgb_pfad = drucke_bild('original', rgb)
+    jpg_pfad = drucke_bild('jpg_bild', jpg)
+    os.path.getsize(rgb_pfad)
+    os.path.getsize(jpg_pfad)
 
-    ergebnisse = [rgb, ycbcr, ycbcr_sub, dct, dct_quant, dct_cod,
-                  dct_decod, dct_dequant, idct, ycbcr_up, jpg]
+    ergebnisse = [rgb, ycbcr, ycbcr_sub, dct, dct_quant,
+                  dct_dequant, idct, ycbcr_up, jpg, dct_cod]
 
     return jpg_pfad, ergebnisse
 
@@ -76,14 +86,17 @@ def _komprimiereKomponent(komponent):
     # Quantisierung der Koeffizienten
     dct_quant = quant(dct, chrominanz)
     # Codierung der quantisierten Koeffizienten
-    dct_cod = codierung(dct_quant)
-    # Deodierung der Koeffizienten
-    dct_decod = codierung(dct_cod)
+    dct_cod, groesse = codierung(dct_quant)
+    # Schreiben in Datei
+    datei = schreibe(str(komponent[1]), dct_cod)
+    # Lesen von Datei
+    dct_cod_ = lese(str(komponent[1]))
+    # Decodierung der Koeffizienten
+    dct_decod = decodierung(dct_cod_, groesse)
     # Dequantisierung der Koeffizienten
     dct_dequant = dequant(dct_quant, chrominanz)
     # Inverse diskrete Cosinus Transformation in 8x8 Bloecken
     idct = idcTransformation(dct_dequant)
-
     # Test ob Chrominanz-Komponent
     if chrominanz:
         # Ueberabtastung der Chrominanz/Interpolation
@@ -107,7 +120,7 @@ def hinTransformation(matrix):
                     [nmatrix[a][b][0], nmatrix[a][b][1], nmatrix[a][b][2]]),
                 nmatrix[a][b])
     nmatrix[:, :, [1, 2]] += 128
-    nmatrix = np.round(nmatrix)
+    nmatrix = np.round(nmatrix).astype(np.uint8)
 
     return nmatrix
 
@@ -124,13 +137,14 @@ def rueckTransformation(komponente):
 
     for a in range(matrix.shape[0]):
         for b in range(matrix.shape[1]):
-            np.matmul(ycbcr, np.array(
-                [matrix[a][b][0], matrix[a][b][1], matrix[a][b][2]]), matrix[a][b])
+            np.matmul(ycbcr,
+                np.array([matrix[a][b][0], matrix[a][b][1], matrix[a][b][2]]),
+                matrix[a][b])
 
         np.putmask(matrix, matrix > 255, 255)
         np.putmask(matrix, matrix < 0, 0)
 
-    return matrix
+    return matrix.astype(np.uint8)
 
 
 def unterabtastung(matrix):
@@ -185,7 +199,7 @@ def dcTransformation(matrix):
 
                     helpMat[a + u][b + v] = help
 
-    return np.array(helpMat)
+    return np.array(helpMat).astype(np.uint8)
 
 
 def idcTransformation(matrix):
@@ -220,7 +234,7 @@ def idcTransformation(matrix):
                 for y in range(0, 8):
                     nmatrix[a + x][b + y] = helpMat[x][y]
 
-    return nmatrix
+    return nmatrix.astype(np.uint8)
 
 
 def quant(matrix, chrominanz):
@@ -253,7 +267,7 @@ def quant(matrix, chrominanz):
                     help[x + u][y + v] = int(
                         round(matrix[x + u][y + v] / qm[u][v]))
 
-    return np.array(help)
+    return np.array(help).astype(np.uint8)
 
 
 def dequant(matrix, chrominanz):
@@ -287,15 +301,70 @@ def dequant(matrix, chrominanz):
 
 
 def codierung(matrix):
-    return matrix.copy
+
+    table = [[0,1,0,0,1,2,3,2,1,0,0,1,2,3,4,5,4,3,2,1,0,0,1,2,3,4,5,6,7,6,5,
+        4,3,2,1,0,1,2,3,4,5,6,7,7,6,5,4,3,2,3,4,5,6,7,7,6,5,4,5,6,7,7,6,7],
+        [0,0,1,2,1,0,0,1,2,3,4,3,2,1,0,0,1,2,3,4,5,6,5,4,3,2,1,0,0,1,2,3,4,
+        5,6,7,7,6,5,4,3,2,1,2,3,4,5,6,7,7,6,5,4,3,4,5,6,7,7,6,5,6,7,7]]
+
+    array = []
+
+    for a in range(0, matrix.shape[0], 8):
+        for b in range(0, matrix.shape[1], 8):
+            for x in range(np.array(table).shape[1]):
+                array.append(matrix[a + table[1][x]][b + table[0][x]])
+
+    res = []
+
+    for k, i in groupby(array):
+        run = list(i)
+
+        if len(run) > 3:
+            res.append("({},{})".format(len(run), k))
+        else:
+            res.extend(run)
+    print(groesse(str(res)))
+    return res, [matrix.shape[0], matrix.shape[1]]
 
 
-def decodierung(matrix, table):
-    return matrix.copy
+def decodierung(matrix, groesse):
+    table = [[0,1,0,0,1,2,3,2,1,0,0,1,2,3,4,5,4,3,2,1,0,0,1,2,3,4,5,6,7,6,5,
+        4,3,2,1,0,1,2,3,4,5,6,7,7,6,5,4,3,2,3,4,5,6,7,7,6,5,4,5,6,7,7,6,7],
+        [0,0,1,2,1,0,0,1,2,3,4,3,2,1,0,0,1,2,3,4,5,6,5,4,3,2,1,0,0,1,2,3,4,
+        5,6,7,7,6,5,4,3,2,1,2,3,4,5,6,7,7,6,5,4,3,4,5,6,7,7,6,5,6,7,7]]
+
+    alt = []
+
+    nmatrix = np.zeros((groesse[0], groesse[1]))
+
+    for x in matrix:
+
+        if type(x) is str:
+
+            val = x.split(',')
+            firstVal = str(val[0])[1:]
+            secondVal = str(val[1])[0:len(str(val[1])) - 1]
+
+            for number in range(int(float(firstVal))):
+                alt.append(float(secondVal))
+
+        else:
+
+            alt.append(x)
+
+    for a in range(0, nmatrix.shape[0], 8):
+        for b in range(0, nmatrix.shape[1], 8):
+            for x in range(np.array(table).shape[1]):
+
+                nmatrix[a + table[1][x]][b + table[0][x]] = float(alt[x])
+
+    return np.array(nmatrix)
+
 
 
 def entropie(matrix):
 
+   
     entropie = 0
     counts = Counter()
     flache_matrix = np.reshape(matrix, -1)
@@ -343,8 +412,11 @@ def psnr(Y, YH):
 
 
 def groesse(o):
-    return sys.getsizeof(o)
-
+    return os.path.getsize(schreibe('tmp',o))
+    # if type(o).__module__ == np.__name__:
+        # return o.nbytes
+    # else:
+        # return sys.getsizeof(o)
 
 def compFak(a, b):
 
@@ -357,10 +429,17 @@ def save(matrix, path):
     pic.save(path)
 
 
-def speichere_histogramm(label, hist):
-    bildpfad = pfad(label + '.png')
-    fig.savefig(bildpfad)
-    return bildpfad
+def schreibe(label, objekt):
+    datei = pfad(label)
+    with open(datei, 'wb') as file:
+        pickle.dump(objekt, file)
+
+    return datei
+
+
+def lese(label):
+    with open(pfad(label), 'rb') as file:
+        return pickle.load(file)
 
 
 def pfad(datei):

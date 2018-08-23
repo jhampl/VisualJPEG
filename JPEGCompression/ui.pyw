@@ -14,6 +14,7 @@ import Compression as nvm
 from popup import Ui_ProgressPopup
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import pickle
 
 RGB_Bild, R_Bild, G_Bild, B_Bild = "PNG Bild", "PNG-R Bild", "PNG-G Bild", "PNG-B Bild"
 YCbCr_Bild, Y_Bild, Cb_Bild, Cr_Bild = "YCbCr Bild", "Y Bild", "Cb Bild", "Cr Bild"
@@ -26,23 +27,19 @@ Y_Dequant_DCT_Koeffizienten, Cb_Dequant_DCT_Koeffizienten, Cr_Dequant_DCT_Koeffi
 Y_IDCT_Koeffizienten, Cb_IDCT_Koeffizienten, Cr_IDCT_Koeffizienten = "Y IDCT Koeffizienten", "Cb IDCT Koeffizienten", "Cr IDCT Koeffizienten"
 YCbCr_up_Bild, Y_up_Bild, Cb_up_Bild, Cr_up_Bild = "Upsampling YCbCr Bild", "Upsampling Y Bild", "Upsampling Cb Bild", "Upsampling Cr Bild"
 JPEG_RGB_Bild, JPEG_R_Bild, JPEG_G_Bild, JPEG_B_Bild = "JPEG Bild", "JPEG-R Bild", "JPEG-G Bild", "JPEG-B Bild"
-Vergleich_Quant, Vergleich_Bilder = "Vergleich mit Quantisierung", "Vergleich mit rekonstr. Bild"
+Vergleich_Quant, Vergleich_Bilder = "Evaluation Komprimierung", "Evaluation Bild"
 
 labels = [
     RGB_Bild, R_Bild, G_Bild, B_Bild, YCbCr_Bild, Y_Bild, Cb_Bild, Cr_Bild,
-    Y_sub_Bild, Cb_sub_Bild, Cr_sub_Bild,
     Y_DCT_Koeffizienten, Cb_DCT_Koeffizienten, Cr_DCT_Koeffizienten,
     Y_Quant_DCT_Koeffizienten, Cb_Quant_DCT_Koeffizienten, Cr_Quant_DCT_Koeffizienten,
     Y_Dequant_DCT_Koeffizienten, Cb_Dequant_DCT_Koeffizienten, Cr_Dequant_DCT_Koeffizienten,
-    Y_Cod_DCT_Koeffizienten, Cb_Cod_DCT_Koeffizienten, Cr_Cod_DCT_Koeffizienten,
-    Y_Decod_DCT_Koeffizienten, Cb_Decod_DCT_Koeffizienten, Cr_Decod_DCT_Koeffizienten,
     Y_IDCT_Koeffizienten, Cb_IDCT_Koeffizienten, Cr_IDCT_Koeffizienten,
-    Y_up_Bild, Cb_up_Bild, Cr_up_Bild,
     JPEG_RGB_Bild, JPEG_R_Bild, JPEG_G_Bild, JPEG_B_Bild,
     Vergleich_Quant, Vergleich_Bilder
 ]
 
-wertemap = []
+werte = []
 switch = True
 histmaps = []
 bildmaps = []
@@ -84,7 +81,7 @@ class Ui_MainWindow(object):
 
     def setui(self):
 
-        if index < len(wertemap) - 2:
+        if index < len(werte) - 2:
             self.stack.setCurrentIndex(0)
             self.label_3.setText("Quellenredundanz (bit/Symbol)")
             self.label_4.setText("Entropie (bit/Symbol)")
@@ -98,25 +95,27 @@ class Ui_MainWindow(object):
             self.label_psnr.setText(str(entsg))
             self.label_mse.setText(str(groesse1))
 
-            self.label_left.setPixmap(QPixmap(nvm.drucke_bild(str(index), wertemap[index])))
-            self.canvas.figure = nvm.histogramm(wertemap[index][0])
+            self.label_left.setPixmap(QPixmap(nvm.drucke_bild('tmp', werte[index])))
+            self.canvas.figure = nvm.histogramm(werte[index][0])
 
             self.canvas.draw()
 
         else:
-            if index < len(wertemap) - 1:
+            if index < len(werte) - 1:
+                self.label_3.setText("Groesse Original (bytes)")
+                self.label_4.setText("Groesse Codierte DCT Koeff. (bytes)")
+                self.label_5.setText("")
+                self.label_10.setText("")
+                self.label_right.setPixmap(QPixmap())
+
+            else:
                 self.label_3.setText("Groesse Original, links (bytes)")
-                self.label_4.setText("Groesse JPG, rechts (bytes)")
+                self.label_4.setText("Groesse JPEG, rechts (bytes)")
                 self.label_5.setText("PSNR (dB)")
                 self.label_10.setText("MSE (dB)")
                 self.label_mse.setText(str(mse))
                 self.label_psnr.setText(str(psnr))
-
-            else:
-                self.label_3.setText("Groesse Original, links (bytes)")
-                self.label_4.setText("Groesse Codierte DCT Koeff., rechts (bytes)")
-                self.label_5.setText("")
-                self.label_10.setText("")
+                self.label_right.setPixmap(QPixmap(nvm.drucke_bild(str(index), werte[index][1])))
 
             self.stack.setCurrentIndex(1)
             self.label_9.setText("Kompressionsfaktor")
@@ -124,8 +123,8 @@ class Ui_MainWindow(object):
             self.label_entropie.setText(str(groesse2))
             self.label_compfak.setText(str(compfak))
 
-            self.label_left.setPixmap(QPixmap(nvm.drucke_bild(str(index), wertemap[index][0])))
-            self.label_right.setPixmap(QPixmap(nvm.drucke_bild(str(index), wertemap[index][1])))
+            self.label_left.setPixmap(QPixmap(nvm.drucke_bild(str(index), werte[index][0])))
+            
 
         self.popup.close()
 
@@ -371,26 +370,25 @@ class JPEGThread(QThread):
         self.wait()
 
     def run(self):
-        global wertemap
+        global werte
         global jpg_pfad
         jpg_pfad, ergebnisse = nvm.komprimiere(self.filename)
 
-        wertemap = []
-        for i in range(len(ergebnisse)):
+        werte = []
+        for i in range(len(ergebnisse)-1):
             ergebnis = ergebnisse[i]
             if isinstance(ergebnis, list):
-                wertemap.append(ergebnis[0])
-                wertemap.append(ergebnis[1])
-                wertemap.append(ergebnis[2])
+                werte.append(ergebnis[0])
+                werte.append(ergebnis[1])
+                werte.append(ergebnis[2])
             else:
-                wertemap.append(ergebnis)
-                wertemap.append(ergebnis[:,:,0])
-                wertemap.append(ergebnis[:,:,1])
-                wertemap.append(ergebnis[:,:,2])
+                werte.append(ergebnis)
+                werte.append(ergebnis[:,:,0])
+                werte.append(ergebnis[:,:,1])
+                werte.append(ergebnis[:,:,2])
 
-        wertemap.append([ergebnisse[0], ergebnisse[len(ergebnisse) - 6]])
-        wertemap.append([ergebnisse[0], ergebnisse[len(ergebnisse) - 1]])
-
+        werte.append([ergebnisse[0], ergebnisse[len(ergebnisse) - 1]])
+        werte.append([ergebnisse[0], ergebnisse[len(ergebnisse) - 2]])
 
         self.signal.emit()
 
@@ -418,16 +416,23 @@ class LoadThread(QThread):
         global psnr
         global compfak
 
-        if index < len(wertemap) - 2:
-            matrix = wertemap[self.index]
+        if index < len(werte) - 2:
+            matrix = werte[self.index]
             qll = nvm.quellenredundanz(matrix)
             entsg = nvm.entscheidungsgehalt(matrix)
             entr = nvm.entropie(matrix)
             groesse1 = nvm.groesse(matrix)
 
+        elif index < len(werte) - 1:
+            matrix1 = werte[self.index][0]
+            matrix2 = werte[self.index][1]
+            groesse1 = nvm.groesse(matrix1)
+            groesse2 = nvm.groesse(matrix2)
+            compfak = nvm.compFak(groesse1, groesse2)
+
         else:
-            matrix1 = wertemap[self.index][0]
-            matrix2 = wertemap[self.index][1]
+            matrix1 = werte[self.index][0]
+            matrix2 = werte[self.index][1]
             mse = nvm.mse(matrix1, matrix2)
             groesse1 = nvm.groesse(matrix1)
             groesse2 = nvm.groesse(matrix2)
