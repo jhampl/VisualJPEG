@@ -10,39 +10,32 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import QThread, pyqtSignal
-import Compression as nvm
+from Compression import JPEG 
 from popup import Ui_ProgressPopup
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 RGB_Bild, R_Bild, G_Bild, B_Bild = "PNG Bild", "PNG-R Bild", "PNG-G Bild", "PNG-B Bild"
 YCbCr_Bild, Y_Bild, Cb_Bild, Cr_Bild = "YCbCr Bild", "Y Bild", "Cb Bild", "Cr Bild"
-YCbCr_sub_Bild, Y_sub_Bild, Cb_sub_Bild, Cr_sub_Bild = "Downsampling YCbCr Bild", "Downsampling Y Bild", "Downsampling Cb Bild", "Downsampling Cr Bild"
 Y_DCT_Koeffizienten, Cb_DCT_Koeffizienten, Cr_DCT_Koeffizienten = "Y DCT Koeffizienten", "Cb DCT Koeffizienten", "Cr DCT Koeffizienten"
 Y_Quant_DCT_Koeffizienten, Cb_Quant_DCT_Koeffizienten, Cr_Quant_DCT_Koeffizienten = "Quant. Y DCT Koeffizienten", "Quant. Cb DCT Koeffizienten", "Quant. Cr DCT Koeffizienten"
-Y_Cod_DCT_Koeffizienten, Cb_Cod_DCT_Koeffizienten, Cr_Cod_DCT_Koeffizienten = "Codierte Y DCT Koeffizienten", "Codierte Cb DCT Koeffizienten", "Codierte Cr DCT Koeffizienten"
-Y_Decod_DCT_Koeffizienten, Cb_Decod_DCT_Koeffizienten, Cr_Decod_DCT_Koeffizienten = "Decodierte Y DCT Koeffizienten", "Decodierte Cb DCT Koeffizienten", "Decodierte Cr DCT Koeffizienten"
 Y_Dequant_DCT_Koeffizienten, Cb_Dequant_DCT_Koeffizienten, Cr_Dequant_DCT_Koeffizienten = "Dequant. Y DCT Koeffizienten", "Dequant. Cb DCT Koeffizienten", "Dequant. Cr DCT Koeffizienten"
 Y_IDCT_Koeffizienten, Cb_IDCT_Koeffizienten, Cr_IDCT_Koeffizienten = "Y IDCT Koeffizienten", "Cb IDCT Koeffizienten", "Cr IDCT Koeffizienten"
-YCbCr_up_Bild, Y_up_Bild, Cb_up_Bild, Cr_up_Bild = "Upsampling YCbCr Bild", "Upsampling Y Bild", "Upsampling Cb Bild", "Upsampling Cr Bild"
 JPEG_RGB_Bild, JPEG_R_Bild, JPEG_G_Bild, JPEG_B_Bild = "JPEG Bild", "JPEG-R Bild", "JPEG-G Bild", "JPEG-B Bild"
 Vergleich_Quant, Vergleich_Bilder = "Vergleich mit Quantisierung", "Vergleich mit rekonstr. Bild"
 
 labels = [
     RGB_Bild, R_Bild, G_Bild, B_Bild, YCbCr_Bild, Y_Bild, Cb_Bild, Cr_Bild,
-    Y_sub_Bild, Cb_sub_Bild, Cr_sub_Bild,
     Y_DCT_Koeffizienten, Cb_DCT_Koeffizienten, Cr_DCT_Koeffizienten,
     Y_Quant_DCT_Koeffizienten, Cb_Quant_DCT_Koeffizienten, Cr_Quant_DCT_Koeffizienten,
     Y_Dequant_DCT_Koeffizienten, Cb_Dequant_DCT_Koeffizienten, Cr_Dequant_DCT_Koeffizienten,
-    Y_Cod_DCT_Koeffizienten, Cb_Cod_DCT_Koeffizienten, Cr_Cod_DCT_Koeffizienten,
-    Y_Decod_DCT_Koeffizienten, Cb_Decod_DCT_Koeffizienten, Cr_Decod_DCT_Koeffizienten,
     Y_IDCT_Koeffizienten, Cb_IDCT_Koeffizienten, Cr_IDCT_Koeffizienten,
-    Y_up_Bild, Cb_up_Bild, Cr_up_Bild,
     JPEG_RGB_Bild, JPEG_R_Bild, JPEG_G_Bild, JPEG_B_Bild,
     Vergleich_Quant, Vergleich_Bilder
 ]
 
 wertemap = []
+nvm = None
 switch = True
 histmaps = []
 bildmaps = []
@@ -373,6 +366,9 @@ class JPEGThread(QThread):
     def run(self):
         global wertemap
         global jpg_pfad
+        global nvm
+
+        nvm = JPEG(self.filename)
         jpg_pfad, ergebnisse = nvm.komprimiere(self.filename)
 
         wertemap = []
