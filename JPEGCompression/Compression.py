@@ -188,6 +188,41 @@ def dcTransformation(matrix):
     return np.array(helpMat)
 
 
+def idcTransformation(matrix):
+    nmatrix = matrix.copy()
+    helpMat = np.zeros((8, 8))
+
+    for a in range(0, nmatrix.shape[0], 8):
+        for b in range(0, nmatrix.shape[1], 8):
+            for x in range(0, 8):
+                for y in range(0, 8):
+
+                    help = 0
+
+                    for u in range(0, 8):
+                        for v in range(0, 8):
+                            if u == 0:
+                                cu = 1 / math.sqrt(2)
+                            else:
+                                cu = 1
+                            if v == 0:
+                                cv = 1 / math.sqrt(2)
+                            else:
+                                cv = 1
+
+                            help += cu * cv * nmatrix[a + u][b + v] * \
+                                math.cos(((2 * x + 1) * u * math.pi) / 16) * \
+                                math.cos(((2 * y + 1) * v * math. pi) / 16)
+
+                    helpMat[x][y] = help * 1 / 4
+
+            for x in range(0, 8):
+                for y in range(0, 8):
+                    nmatrix[a + x][b + y] = helpMat[x][y]
+
+    return nmatrix
+
+
 def quant(matrix, chrominanz):
 
     help = np.zeros((matrix.shape[0], matrix.shape[1]))
@@ -252,93 +287,11 @@ def dequant(matrix, chrominanz):
 
 
 def codierung(matrix):
-    array = []
-
-    for a in range(0, matrix.shape[0], 8):
-        for b in range(0, matrix.shape[1], 8):
-            for x in range(np.array(table).shape[1]):
-                array.append(matrix[b + table[1][x]][a + table[0][x]])
-
-    res = []
-
-    for k, i in groupby(array):
-        run = list(i)
-
-        if len(run) > 3:
-            res.append("({},{})".format(len(run), k))
-        else:
-            res.extend(run)
-
-    return res
+    return matrix.copy
 
 
-
-def decodierung(matrix):
-    for x in array:
-
-        if type(x) is str:
-
-            val = x.split(',')
-            firstVal = str(val[0])[1:]
-            secondVal = str(val[1])[0:len(str(val[1]))-1]
-
-            for number in range(int(firstVal)):
-                alt.append(int(secondVal))
-
-        else:
-
-            alt.append(x)
-
-    for a in range(0, matrix.shape[0], 8):
-        for b in range(0, matrix.shape[1], 8):
-            for x in range(np.array(table).shape[1]):
-
-                matrix[b + table[1][x]][a + table[0][x]] = int(alt[x])
-
-    return np.array(matrix)
-
-
-def idcTransformation(matrix):
-    nmatrix = matrix.copy()
-    helpMat = np.zeros((8, 8))
-
-    for a in range(0, nmatrix.shape[0], 8):
-        for b in range(0, nmatrix.shape[1], 8):
-            for x in range(0, 8):
-                for y in range(0, 8):
-
-                    help = 0
-
-                    for u in range(0, 8):
-                        for v in range(0, 8):
-                            if u == 0:
-                                cu = 1 / math.sqrt(2)
-                            else:
-                                cu = 1
-                            if v == 0:
-                                cv = 1 / math.sqrt(2)
-                            else:
-                                cv = 1
-
-                            help += cu * cv * nmatrix[a +
-                                                      u][b +
-                                                         v] * math.cos(
-                                ((2 * x +
-                                  1) * u *
-                                 math.pi) /
-                                16
-                            ) * math.cos((
-                                (2 * y + 1)
-                                * v * math.
-                                pi) / 16)
-
-                    helpMat[x][y] = help * 1 / 4
-
-            for x in range(0, 8):
-                for y in range(0, 8):
-                    nmatrix[a + x][b + y] = helpMat[x][y]
-
-    return nmatrix
+def decodierung(matrix, table):
+    return matrix.copy
 
 
 def entropie(matrix):
