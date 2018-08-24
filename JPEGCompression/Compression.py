@@ -346,6 +346,14 @@ class JPEG:
         pass
 
 
+    def unterabtastung(self, matrix):
+        return matrix[::2, ::2]
+
+
+    def ueberabtastung(self, matrix):
+        return matrix.repeat(2, axis=0).repeat(2, axis=1)
+
+
 if __name__ == '__main__':
     nvm = JPEG('I:\misc/4.2.04.png')
 
