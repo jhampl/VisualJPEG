@@ -10,10 +10,17 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import QThread, pyqtSignal
-from Compression import JPEG 
+from Compression import JPEG
 from popup import Ui_ProgressPopup
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import seaborn as sns
+import sys
+import numpy as np
+from PIL import Image
+import matplotlib.pyplot as plt
+import os
+
 
 RGB_Bild, R_Bild, G_Bild, B_Bild = "PNG Bild", "PNG-R Bild", "PNG-G Bild", "PNG-B Bild"
 YCbCr_Bild, Y_Bild, Cb_Bild, Cr_Bild = "YCbCr Bild", "Y Bild", "Cb Bild", "Cr Bild"
@@ -22,7 +29,7 @@ Y_Quant_DCT_Koeffizienten, Cb_Quant_DCT_Koeffizienten, Cr_Quant_DCT_Koeffiziente
 Y_Dequant_DCT_Koeffizienten, Cb_Dequant_DCT_Koeffizienten, Cr_Dequant_DCT_Koeffizienten = "Dequant. Y DCT Koeffizienten", "Dequant. Cb DCT Koeffizienten", "Dequant. Cr DCT Koeffizienten"
 Y_IDCT_Koeffizienten, Cb_IDCT_Koeffizienten, Cr_IDCT_Koeffizienten = "Y IDCT Koeffizienten", "Cb IDCT Koeffizienten", "Cr IDCT Koeffizienten"
 JPEG_RGB_Bild, JPEG_R_Bild, JPEG_G_Bild, JPEG_B_Bild = "JPEG Bild", "JPEG-R Bild", "JPEG-G Bild", "JPEG-B Bild"
-Vergleich_Quant, Vergleich_Bilder = "Vergleich mit Quantisierung", "Vergleich mit rekonstr. Bild"
+Vergleich_Quant, Vergleich_Bilder = "Evaluation Kompression", "Evaluation Bildqualitaet"
 
 labels = [
     RGB_Bild, R_Bild, G_Bild, B_Bild, YCbCr_Bild, Y_Bild, Cb_Bild, Cr_Bild,
@@ -91,25 +98,29 @@ class Ui_MainWindow(object):
             self.label_psnr.setText(str(entsg))
             self.label_mse.setText(str(groesse1))
 
-            self.label_left.setPixmap(QPixmap(nvm.drucke_bild(str(index), wertemap[index])))
-            self.canvas.figure = nvm.histogramm(wertemap[index][0])
+            self.label_left.setPixmap(QPixmap(drucke_bild(str(index), wertemap[index])))
+            self.canvas.figure = histogramm(wertemap[index][0])
 
             self.canvas.draw()
 
         else:
             if index < len(wertemap) - 1:
+                self.label_3.setText("Groesse Original (bytes)")
+                self.label_4.setText("Groesse Quantisierte DCT Koeff. (bytes)")
+                self.label_5.setText("")
+                self.label_10.setText("")
+                self.label_mse.setText("")
+                self.label_psnr.setText("") 
+                self.label_right.setPixmap(QPixmap())
+
+            else:
                 self.label_3.setText("Groesse Original, links (bytes)")
-                self.label_4.setText("Groesse JPG, rechts (bytes)")
+                self.label_4.setText("Groesse Rekonstruiert, rechts (bytes)")
                 self.label_5.setText("PSNR (dB)")
                 self.label_10.setText("MSE (dB)")
                 self.label_mse.setText(str(mse))
                 self.label_psnr.setText(str(psnr))
-
-            else:
-                self.label_3.setText("Groesse Original, links (bytes)")
-                self.label_4.setText("Groesse Codierte DCT Koeff., rechts (bytes)")
-                self.label_5.setText("")
-                self.label_10.setText("")
+                self.label_right.setPixmap(QPixmap(drucke_bild(str(index), wertemap[index][1])))
 
             self.stack.setCurrentIndex(1)
             self.label_9.setText("Kompressionsfaktor")
@@ -117,8 +128,7 @@ class Ui_MainWindow(object):
             self.label_entropie.setText(str(groesse2))
             self.label_compfak.setText(str(compfak))
 
-            self.label_left.setPixmap(QPixmap(nvm.drucke_bild(str(index), wertemap[index][0])))
-            self.label_right.setPixmap(QPixmap(nvm.drucke_bild(str(index), wertemap[index][1])))
+            self.label_left.setPixmap(QPixmap(drucke_bild(str(index), wertemap[index][0])))
 
         self.popup.close()
 
@@ -352,6 +362,34 @@ class Ui_MainWindow(object):
         self.actionQuelle.setShortcut(_translate("MainWindow", "Ctrl+O"))
 
 
+def pfad(datei):
+    return os.path.abspath('Ergebnisse' + '/' + datei)
+
+
+def histogramm(array):
+
+    plt.close('all')
+    sns.set_style('whitegrid')
+
+    eindim = np.reshape(array, -1)
+
+    plot = sns.distplot(eindim)
+    fig = plot.get_figure()
+    return fig
+
+
+def drucke_bild(label, array):
+
+    img = Image.fromarray(array.astype('uint8'))
+    bildpfad = pfad(label + '.png')
+    img.save(bildpfad)
+    return bildpfad
+
+
+def groesse(datei):
+    return os.path.getsize(datei)
+
+
 class JPEGThread(QThread):
 
     signal = pyqtSignal()
@@ -369,24 +407,23 @@ class JPEGThread(QThread):
         global nvm
 
         nvm = JPEG(self.filename)
-        jpg_pfad, ergebnisse = nvm.komprimiere(self.filename)
 
-        wertemap = []
-        for i in range(len(ergebnisse)):
-            ergebnis = ergebnisse[i]
-            if isinstance(ergebnis, list):
-                wertemap.append(ergebnis[0])
-                wertemap.append(ergebnis[1])
-                wertemap.append(ergebnis[2])
-            else:
-                wertemap.append(ergebnis)
-                wertemap.append(ergebnis[:,:,0])
-                wertemap.append(ergebnis[:,:,1])
-                wertemap.append(ergebnis[:,:,2])
+        rgb = nvm.crop()
+        ycbcr = nvm.hinTransformation(rgb)
+        dct = nvm.dct(ycbcr)
+        dct_quant = nvm.quant(dct)
+        dct_dequant = nvm.dequant(dct_quant)
+        idct = nvm.inversedct(dct_dequant)
+        jpg = nvm.rueckTransformation(ycbcr)
 
-        wertemap.append([ergebnisse[0], ergebnisse[len(ergebnisse) - 6]])
-        wertemap.append([ergebnisse[0], ergebnisse[len(ergebnisse) - 1]])
-
+        wertemap = [ rgb, rgb[:,:,0], rgb[:,:,1], rgb[:,:,2],
+        ycbcr, ycbcr[:,:,0], ycbcr[:,:,1], ycbcr[:,:,2],
+        dct[:,:,0],dct[:,:,1], dct[:,:,2],  
+        dct_quant[:,:,0],dct_quant[:,:,1], dct_quant[:,:,2], 
+        dct_dequant[:,:,0], dct_dequant[:,:,1],  dct_dequant[:,:,2],  
+        idct[:,:,0], idct[:,:,1],  idct[:,:,2],  
+        jpg, jpg[:,:,0], jpg[:,:,1],  jpg[:,:,2], [jpg, dct_quant], [rgb, jpg]
+        ]
 
         self.signal.emit()
 
@@ -419,22 +456,23 @@ class LoadThread(QThread):
             qll = nvm.quellenredundanz(matrix)
             entsg = nvm.entscheidungsgehalt(matrix)
             entr = nvm.entropie(matrix)
-            groesse1 = nvm.groesse(matrix)
+            groesse1 = groesse(drucke_bild('label', matrix))
 
         else:
             matrix1 = wertemap[self.index][0]
             matrix2 = wertemap[self.index][1]
-            mse = nvm.mse(matrix1, matrix2)
-            groesse1 = nvm.groesse(matrix1)
-            groesse2 = nvm.groesse(matrix2)
-            psnr = nvm.psnr(matrix1, matrix2)
-            compfak = nvm.compFak(groesse1, groesse2)
+            mse = nvm.MSE(matrix1, matrix2)
+            matrix1_pfad = drucke_bild('tmp1', matrix1)
+            matrix2_pfad = drucke_bild('tmp2', matrix2)
+            groesse1 = groesse(matrix1_pfad)
+            groesse2 = groesse(matrix2_pfad)
+            psnr = nvm.PSNR(matrix1, matrix2)
+            compfak = nvm.compFak(matrix1_pfad, matrix2_pfad)
 
         self.signal.emit()
 
 
 if __name__ == "__main__":
-    import sys
     app = QtWidgets.QApplication(sys.argv)
     MainWindow = QtWidgets.QMainWindow()
     ui = Ui_MainWindow()
