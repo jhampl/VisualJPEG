@@ -6,97 +6,110 @@ import math
 from collections import Counter
 import matplotlib.pyplot as plt
 import os
-import seaborn as davi
 from multiprocessing import Pool
-import sys
 from itertools import groupby
-import pickle
+import json
 
-np.set_printoptions(threshold=np.nan)
-ordner = 'Ergebnisse'
 
-def komprimiere(pfad):
-
+# Encoder
+def komprimiere(datei, *op_zielpfad):
     # Einlesen des Bilds
-    img = np.array(Image.open(pfad))
+    bild = np.array(Image.open(datei))
 
-    if not os.path.exists(ordner):
-        os.makedirs(ordner)
-
-    # Reflektieren des Bildrands fuer die 8x8 Blockbildung
-    rgb = pad(img)
+    # Reflektions-Padding des Bilds fuer die 8x8 Blockbildung
+    bild_pad = pad(bild)
 
     # Transformation in YCbCr
-    ycbcr = hinTransformation(rgb)
+    ycbcr = frHinTransformation(bild_pad)
 
     # Paralleles Verarbeiten der Bildkomponenten,
-    # siehe Methode "_komprimiereKomponent"
+    # siehe Methode "_komprimiereKomponente"
     pool = Pool(3)
-    komponente = [[ycbcr[:,:,0], 0], [ycbcr[:,:,1], 1], [ycbcr[:,:,2], 2]]
-    verarb_komponente = pool.map(_komprimiereKomponent, komponente)
+    # Markieren der Komponenten
+    komponenten = [[ycbcr[:,:,0], 'Y'], [ycbcr[:,:,1], 'Cb'], [ycbcr[:,:,2], 'Cr']]
+    codierung = pool.map(_komprimiereKomponente, komponenten)
 
-    def reihe(i):
-        return [verarb_komponente[0][i],
-                verarb_komponente[1][i], verarb_komponente[2][i]]
+    # Speichern der Komprimierung
+    # Standard Pfad, wenn keiner angegeben
+    if len(op_zielpfad) == 0:
+        bildname = datei.split('/')[len(datei.split('/'))-1].split('.')[0]
+        zielpfad = os.path.abspath('./Ergebnisse/' + bildname + '_codiert.json')
+    else:
+        zielpfad = op_zielpfad[0]
+    # Schreiben der codierten Daten in eine Datei
+    with open(zielpfad, 'w') as jpeg:
+        json.dump(codierung, jpeg)
 
-    ycbcr_sub = reihe(0)
-    dct = reihe(1)
-    dct_quant = reihe(2)
-    dct_cod = reihe(3)
-    dct_decod = reihe(4)
-    dct_dequant = reihe(5)
-    idct = reihe(6)
-    ycbcr_up = reihe(7)
+    return zielpfad
 
-    print(type(rgb), rgb.dtype, rgb.shape, groesse(rgb), groesse(rgb[:,:,0]))
-    # print(groesse(ycbcr[0]))
-    # print(groesse(ycbcr_sub[0]))
-    # print(groesse(dct[0]))
-    print(groesse(dct_quant[0]), groesse(dct_quant), type(dct_quant), dct_quant[0].dtype, dct_quant[0].shape)
-    # print(groesse(dct_cod[0]))
-    # print(groesse(dct_decod))
-    # Ruecktransformation in RGB
-    jpg = rueckTransformation(ycbcr_up)
+# Komponenten-Encoder
+def _komprimiereKomponente(komponente):
+    ycbcr = komponente[0].copy()
+    chrominanz = komponente[1] != 'Y'
 
-    print(type(jpg), jpg.dtype, jpg.shape, groesse(jpg), groesse(jpg[:,:,0]))
-    rgb_pfad = drucke_bild('original', rgb)
-    jpg_pfad = drucke_bild('jpg_bild', jpg)
-    os.path.getsize(rgb_pfad)
-    os.path.getsize(jpg_pfad)
-
-    ergebnisse = [rgb, ycbcr, ycbcr_sub, dct, dct_quant,
-                  dct_dequant, idct, ycbcr_up, jpg, dct_cod]
-
-    return jpg_pfad, ergebnisse
-
-
-def _komprimiereKomponent(komponent):
-    ycbcr = komponent[0].copy()
-    chrominanz = komponent[1] > 0
-
-    # Test ob Chrominanz-Komponent
+    # Test ob Chrominanz-Komponente
     if chrominanz:
-        # Unterabtasten der Chrominanz
+        # 4:2:0 Unterabtasten der Chrominanz
         ycbcr_sub = unterabtastung(ycbcr)
     else:
         ycbcr_sub = ycbcr
 
     # Diskrete Cosinus Transformation in 8x8 Bloecken
     dct = dcTransformation(ycbcr_sub)
+
     # Quantisierung der Koeffizienten
-    dct_quant = quant(dct, chrominanz)
+    dct_quant = quantisierung(dct, chrominanz)
+
     # Codierung der quantisierten Koeffizienten
     dct_cod, groesse = codierung(dct_quant)
-    # Schreiben in Datei
-    datei = schreibe(str(komponent[1]), dct_cod)
-    # Lesen von Datei
-    dct_cod_ = lese(str(komponent[1]))
+
+    return [dct_cod, groesse]
+
+
+# Decoder
+def dekomprimiere(datei, *op_zielpfad):
+    # Einlesen der JPEG Datei
+    with open(datei, 'r') as jpeg:
+        codierung = json.load(jpeg)
+
+    # Paralleles Verarbeiten der Bildkomponenten,
+    # siehe Methode "_dekomprimiereKomponente"
+    pool = Pool(3)
+    # Markieren der Komponenten
+    cod_komponenten = [[codierung[0], 'Y'], [codierung[1], 'Cb'], [codierung[2], 'Cr']]
+    komponenten = pool.map(_dekomprimiereKomponente, cod_komponenten)
+
+    # Ruecktransformation in RGB
+    bild = frRueckTransformation(komponenten)
+    
+    # Speichern als PNG
+    # Standard zielpfad, wenn keiner angegeben
+    if len(op_zielpfad) == 0:
+        bildname = datei.split('/')[len(datei.split('/'))-1].split('.')[0]
+        zielpfad = os.path.abspath('./Ergebnisse/' + bildname + '_komprimiert.png')
+    else:
+        zielpfad = op_zielpfad[0]
+    img = Image.fromarray(bild)
+    img.save(zielpfad)
+
+    return zielpfad
+
+
+# Komponenten-Decoder
+def _dekomprimiereKomponente(komponente):
+    dct_cod = komponente[0][0].copy()
+    groesse = komponente[0][1]
+    chrominanz = komponente[1] != 'Y'
+
     # Decodierung der Koeffizienten
-    dct_decod = decodierung(dct_cod_, groesse)
+    dct_quant = decodierung(dct_cod, groesse)
+
     # Dequantisierung der Koeffizienten
-    dct_dequant = dequant(dct_quant, chrominanz)
+    dct_dequant = dequantisierung(dct_quant, chrominanz)
+
     # Inverse diskrete Cosinus Transformation in 8x8 Bloecken
     idct = idcTransformation(dct_dequant)
+
     # Test ob Chrominanz-Komponent
     if chrominanz:
         # Ueberabtastung der Chrominanz/Interpolation
@@ -104,14 +117,14 @@ def _komprimiereKomponent(komponent):
     else:
         ycbcr_up = idct
 
-    return [ycbcr_sub, dct, dct_dequant, dct_cod,
-            dct_decod, dct_quant, idct, ycbcr_up]
+    return ycbcr_up
 
 
-def hinTransformation(matrix):
+def frHinTransformation(matrix):
     nmatrix = matrix.copy().astype(np.float64)
     ycbcr = np.array([[.299, .587, .114], [-.169, -.331, .5],
                       [.5, -.419, -.081]])
+
     for a in range(nmatrix.shape[0]):
         for b in range(nmatrix.shape[1]):
             np.matmul(
@@ -119,30 +132,27 @@ def hinTransformation(matrix):
                 np.array(
                     [nmatrix[a][b][0], nmatrix[a][b][1], nmatrix[a][b][2]]),
                 nmatrix[a][b])
+
     nmatrix[:, :, [1, 2]] += 128
-    nmatrix = np.round(nmatrix).astype(np.uint8)
+    nmatrix = np.round(nmatrix)
 
     return nmatrix
 
 
-def rueckTransformation(komponente):
-
-    matrix = np.zeros((komponente[0].shape[0], komponente[0].shape[1], 3))
-
-    for i in range(3):
-        matrix[:, :, i] = komponente[i]
-
+def frRueckTransformation(komponente):
+    matrix = np.zeros((komponente[0].shape[0],  komponente[0].shape[1], 3)).astype(np.float64) 
+    matrix[:,:,0] = komponente[0]
+    matrix[:,:,1] = komponente[1]
+    matrix[:,:,2] = komponente[2]
     ycbcr = np.array([[1, 0, 1.402], [1, -.34414, -.71414], [1, 1.722, 0]])
     matrix[:, :, [1, 2]] -= 128
 
     for a in range(matrix.shape[0]):
         for b in range(matrix.shape[1]):
-            np.matmul(ycbcr,
-                np.array([matrix[a][b][0], matrix[a][b][1], matrix[a][b][2]]),
-                matrix[a][b])
+            np.matmul(ycbcr, np.array([matrix[a][b][0], matrix[a][b][1], matrix[a][b][2]]), matrix[a][b])
 
-        np.putmask(matrix, matrix > 255, 255)
-        np.putmask(matrix, matrix < 0, 0)
+    np.putmask(matrix, matrix > 255, 255)
+    np.putmask(matrix, matrix < 0, 0)
 
     return matrix.astype(np.uint8)
 
@@ -155,11 +165,6 @@ def ueberabtastung(matrix):
     return matrix.repeat(2, axis=0).repeat(2, axis=1)
 
 
-def showState(matrix):
-    im = Image.fromarray(np.uint8(matrix))
-    Image._show(im)
-
-
 def pad(image):
     if image.shape[0] % 8 == image.shape[1] % 8 == 0:
         return image
@@ -170,7 +175,6 @@ def pad(image):
 
 
 def dcTransformation(matrix):
-
     helpMat = np.zeros((matrix.shape[0], matrix.shape[1]))
 
     for a in range(0, matrix.shape[0], 8):
@@ -199,7 +203,7 @@ def dcTransformation(matrix):
 
                     helpMat[a + u][b + v] = help
 
-    return np.array(helpMat).astype(np.uint8)
+    return np.array(helpMat)
 
 
 def idcTransformation(matrix):
@@ -210,7 +214,6 @@ def idcTransformation(matrix):
         for b in range(0, nmatrix.shape[1], 8):
             for x in range(0, 8):
                 for y in range(0, 8):
-
                     help = 0
 
                     for u in range(0, 8):
@@ -234,13 +237,11 @@ def idcTransformation(matrix):
                 for y in range(0, 8):
                     nmatrix[a + x][b + y] = helpMat[x][y]
 
-    return nmatrix.astype(np.uint8)
+    return nmatrix
 
 
-def quant(matrix, chrominanz):
-
+def quantisierung(matrix, chrominanz):
     help = np.zeros((matrix.shape[0], matrix.shape[1]))
-
     if chrominanz:
         qm = np.array([[16, 11, 10, 16, 24, 40, 51,
                         61], [12, 12, 14, 19, 26, 48, 60,
@@ -267,12 +268,11 @@ def quant(matrix, chrominanz):
                     help[x + u][y + v] = int(
                         round(matrix[x + u][y + v] / qm[u][v]))
 
-    return np.array(help).astype(np.uint8)
+    return np.array(help)
 
 
-def dequant(matrix, chrominanz):
+def dequantisierung(matrix, chrominanz):
     nmatrix = matrix.copy()
-
     if chrominanz:
         qm = np.array([[16, 11, 10, 16, 24, 40, 51,
                         61], [12, 12, 14, 19, 26, 48, 60,
@@ -297,33 +297,30 @@ def dequant(matrix, chrominanz):
             for x in range(0, 8):
                 for y in range(0, 8):
                     nmatrix[a + x][b + y] = nmatrix[a + x][b + y] * qm[x][y]
+
     return nmatrix
 
 
 def codierung(matrix):
-
     table = [[0,1,0,0,1,2,3,2,1,0,0,1,2,3,4,5,4,3,2,1,0,0,1,2,3,4,5,6,7,6,5,
         4,3,2,1,0,1,2,3,4,5,6,7,7,6,5,4,3,2,3,4,5,6,7,7,6,5,4,5,6,7,7,6,7],
         [0,0,1,2,1,0,0,1,2,3,4,3,2,1,0,0,1,2,3,4,5,6,5,4,3,2,1,0,0,1,2,3,4,
         5,6,7,7,6,5,4,3,2,1,2,3,4,5,6,7,7,6,5,4,3,4,5,6,7,7,6,5,6,7,7]]
-
     array = []
+    res = []
 
     for a in range(0, matrix.shape[0], 8):
         for b in range(0, matrix.shape[1], 8):
             for x in range(np.array(table).shape[1]):
                 array.append(matrix[a + table[1][x]][b + table[0][x]])
 
-    res = []
-
     for k, i in groupby(array):
         run = list(i)
-
         if len(run) > 3:
             res.append("({},{})".format(len(run), k))
         else:
             res.extend(run)
-    print(groesse(str(res)))
+
     return res, [matrix.shape[0], matrix.shape[1]]
 
 
@@ -332,48 +329,37 @@ def decodierung(matrix, groesse):
         4,3,2,1,0,1,2,3,4,5,6,7,7,6,5,4,3,2,3,4,5,6,7,7,6,5,4,5,6,7,7,6,7],
         [0,0,1,2,1,0,0,1,2,3,4,3,2,1,0,0,1,2,3,4,5,6,5,4,3,2,1,0,0,1,2,3,4,
         5,6,7,7,6,5,4,3,2,1,2,3,4,5,6,7,7,6,5,4,3,4,5,6,7,7,6,5,6,7,7]]
-
     alt = []
-
     nmatrix = np.zeros((groesse[0], groesse[1]))
-
+    
     for x in matrix:
-
         if type(x) is str:
-
             val = x.split(',')
             firstVal = str(val[0])[1:]
             secondVal = str(val[1])[0:len(str(val[1])) - 1]
-
             for number in range(int(float(firstVal))):
                 alt.append(float(secondVal))
-
         else:
-
             alt.append(x)
 
+    i = 0
     for a in range(0, nmatrix.shape[0], 8):
         for b in range(0, nmatrix.shape[1], 8):
             for x in range(np.array(table).shape[1]):
-
-                nmatrix[a + table[1][x]][b + table[0][x]] = float(alt[x])
+                nmatrix[a + table[1][x]][b + table[0][x]] = float(alt[x+i])
+            i += 64
 
     return np.array(nmatrix)
 
 
-
 def entropie(matrix):
-
-   
     entropie = 0
     counts = Counter()
     flache_matrix = np.reshape(matrix, -1)
-
     for x in range(flache_matrix.shape[0]):
         counts[x] += 1
 
     probs = [float(c) / flache_matrix.shape[0] for c in counts.values()]
-
     for p in probs:
         if p > 0.:
             entropie -= p * math.log(p, 2)
@@ -382,22 +368,17 @@ def entropie(matrix):
 
 
 def entscheidungsgehalt(matrix):
-
     counts = Counter()
     flache_matrix = np.reshape(matrix, -1)
-
     for x in flache_matrix:
         counts[x] += 1
 
     lan = len(counts.keys())
-
     infogehalt = math.log(lan, 2)
-
     return infogehalt
 
 
 def quellenredundanz(matrix):
-
     return (entropie(matrix) - entscheidungsgehalt(matrix))
 
 
@@ -411,58 +392,5 @@ def psnr(Y, YH):
     return 20 * math.log(max_val, 10) - 10 * math.log(fehler, 10)
 
 
-def groesse(o):
-    return os.path.getsize(schreibe('tmp',o))
-    # if type(o).__module__ == np.__name__:
-        # return o.nbytes
-    # else:
-        # return sys.getsizeof(o)
-
 def compFak(a, b):
-
     return (b / a)
-
-
-def save(matrix, path):
-
-    pic = Image.fromarray(np.uint8(matrix))
-    pic.save(path)
-
-
-def schreibe(label, objekt):
-    datei = pfad(label)
-    with open(datei, 'wb') as file:
-        pickle.dump(objekt, file)
-
-    return datei
-
-
-def lese(label):
-    with open(pfad(label), 'rb') as file:
-        return pickle.load(file)
-
-
-def pfad(datei):
-
-    return os.path.abspath(ordner + '/' + datei)
-
-
-def drucke_bild(label, array):
-
-    img = Image.fromarray(array.astype('uint8'))
-    bildpfad = pfad(label + '.png')
-    img.save(bildpfad)
-    return bildpfad
-
-
-def histogramm(array):
-
-    plt.close('all')
-    davi.set_style('whitegrid')
-
-    eindim = np.reshape(array, -1)
-
-    plot = davi.distplot(eindim)
-    fig = plot.get_figure()
-
-    return fig
