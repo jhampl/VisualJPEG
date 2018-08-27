@@ -13,21 +13,34 @@ import json
 
 # Encoder
 def komprimiere(datei, *op_zielpfad):
+    # Liste zur Aufnahme aller Schritte
+    schritte = []
     # Einlesen des Bilds
     bild = np.array(Image.open(datei))
 
     # Reflektions-Padding des Bilds fuer die 8x8 Blockbildung
     bild_pad = pad(bild)
+    schritte.extend([bild_pad, bild_pad[:,:,0],  bild_pad[:,:,1], bild_pad[:,:,2]])
 
     # Transformation in YCbCr
     ycbcr = frHinTransformation(bild_pad)
+    schritte.extend([ycbcr, ycbcr[:,:,0],  ycbcr[:,:,1], ycbcr[:,:,2]])
 
     # Paralleles Verarbeiten der Bildkomponenten,
     # siehe Methode "_komprimiereKomponente"
     pool = Pool(3)
     # Markieren der Komponenten
     komponenten = [[ycbcr[:,:,0], 'Y'], [ycbcr[:,:,1], 'Cb'], [ycbcr[:,:,2], 'Cr']]
-    codierung = pool.map(_komprimiereKomponente, komponenten)
+    ergebnisse = pool.map(_komprimiereKomponente, komponenten)
+    # Sammeln der Unterschritte
+    ycbcr_sub = [ergebnisse[0][1][0], ergebnisse[1][1][0], ergebnisse[2][1][0]]
+    dct  = [ergebnisse[0][1][1], ergebnisse[1][1][1], ergebnisse[2][1][1]]
+    dct_quant  = [ergebnisse[0][1][2], ergebnisse[1][1][2], ergebnisse[2][1][2]]
+    schritte.extend(ycbcr_sub)
+    schritte.extend(dct)
+    schritte.extend(dct_quant)
+    
+    codierung = [ergebnisse[0][0], ergebnisse[1][0], ergebnisse[2][0]]
 
     # Speichern der Komprimierung
     # Standard Pfad, wenn keiner angegeben
@@ -40,10 +53,11 @@ def komprimiere(datei, *op_zielpfad):
     with open(zielpfad, 'w') as jpeg:
         json.dump(codierung, jpeg)
 
-    return zielpfad
+    return zielpfad, schritte
 
 # Komponenten-Encoder
 def _komprimiereKomponente(komponente):
+    schritte = []
     ycbcr = komponente[0].copy()
     chrominanz = komponente[1] != 'Y'
 
@@ -53,17 +67,22 @@ def _komprimiereKomponente(komponente):
         ycbcr_sub = unterabtastung(ycbcr)
     else:
         ycbcr_sub = ycbcr
-
+    schritte.append(ycbcr_sub)
+    
     # Diskrete Cosinus Transformation in 8x8 Bloecken
     dct = dcTransformation(ycbcr_sub)
+    schritte.append(dct)
 
     # Quantisierung der Koeffizienten
     dct_quant = quantisierung(dct, chrominanz)
+    schritte.append(dct_quant)
 
     # Codierung der quantisierten Koeffizienten
     dct_cod, groesse = codierung(dct_quant)
+    schritte.append(dct_cod)
 
-    return [dct_cod, groesse]
+
+    return [[dct_cod, groesse], schritte]
 
 
 # Decoder
@@ -72,16 +91,30 @@ def dekomprimiere(datei, *op_zielpfad):
     with open(datei, 'r') as jpeg:
         codierung = json.load(jpeg)
 
+    # Liste zur Aufnahme aller Schritte
+    schritte = []
+
     # Paralleles Verarbeiten der Bildkomponenten,
     # siehe Methode "_dekomprimiereKomponente"
     pool = Pool(3)
     # Markieren der Komponenten
     cod_komponenten = [[codierung[0], 'Y'], [codierung[1], 'Cb'], [codierung[2], 'Cr']]
-    komponenten = pool.map(_dekomprimiereKomponente, cod_komponenten)
+    ergebnisse= pool.map(_dekomprimiereKomponente, cod_komponenten)
+
+    # Sammeln der Unterschritte
+    dct_dequant = [ergebnisse[0][1][0], ergebnisse[1][1][0], ergebnisse[2][1][0]]
+    idct  = [ergebnisse[0][1][1], ergebnisse[1][1][1], ergebnisse[2][1][1]]
+    ycbcr_up = [ergebnisse[0][1][2], ergebnisse[1][1][2], ergebnisse[2][1][2]]
+    schritte.extend(dct_dequant)
+    schritte.extend(idct)
+    schritte.extend(ycbcr_up)
+
+    ycbcr = [ergebnisse[0][0], ergebnisse[1][0], ergebnisse[2][0]]
 
     # Ruecktransformation in RGB
-    bild = frRueckTransformation(komponenten)
-    
+    bild = frRueckTransformation(ycbcr)
+    schritte.extend([bild, bild[:,:,0],  bild[:,:,1], bild[:,:,2]])
+
     # Speichern als PNG
     # Standard zielpfad, wenn keiner angegeben
     if len(op_zielpfad) == 0:
@@ -92,11 +125,12 @@ def dekomprimiere(datei, *op_zielpfad):
     img = Image.fromarray(bild)
     img.save(zielpfad)
 
-    return zielpfad
+    return zielpfad, schritte
 
 
 # Komponenten-Decoder
 def _dekomprimiereKomponente(komponente):
+    schritte = []
     dct_cod = komponente[0][0].copy()
     groesse = komponente[0][1]
     chrominanz = komponente[1] != 'Y'
@@ -106,9 +140,11 @@ def _dekomprimiereKomponente(komponente):
 
     # Dequantisierung der Koeffizienten
     dct_dequant = dequantisierung(dct_quant, chrominanz)
+    schritte.append(dct_dequant)
 
     # Inverse diskrete Cosinus Transformation in 8x8 Bloecken
     idct = idcTransformation(dct_dequant)
+    schritte.append(idct)
 
     # Test ob Chrominanz-Komponent
     if chrominanz:
@@ -116,8 +152,9 @@ def _dekomprimiereKomponente(komponente):
         ycbcr_up = ueberabtastung(idct)
     else:
         ycbcr_up = idct
+    schritte.append(ycbcr_up)
 
-    return ycbcr_up
+    return [ycbcr_up, schritte]
 
 
 def frHinTransformation(matrix):

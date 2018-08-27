@@ -28,7 +28,7 @@ YCbCr_sub_Bild, Y_sub_Bild, Cb_sub_Bild, Cr_sub_Bild = "Downsampling YCbCr Bild"
 Y_DCT_Koeffizienten, Cb_DCT_Koeffizienten, Cr_DCT_Koeffizienten = "Y DCT Koeffizienten", "Cb DCT Koeffizienten", "Cr DCT Koeffizienten"
 Y_Quant_DCT_Koeffizienten, Cb_Quant_DCT_Koeffizienten, Cr_Quant_DCT_Koeffizienten = "Quant. Y DCT Koeffizienten", "Quant. Cb DCT Koeffizienten", "Quant. Cr DCT Koeffizienten"
 Y_Dequant_DCT_Koeffizienten, Cb_Dequant_DCT_Koeffizienten, Cr_Dequant_DCT_Koeffizienten = "Dequant. Y DCT Koeffizienten", "Dequant. Cb DCT Koeffizienten", "Dequant. Cr DCT Koeffizienten"
-Y_IDCT_Koeffizienten, Cb_IDCT_Koeffizienten, Cr_IDCT_Koeffizienten = "Y IDCT Koeffizienten", "Cb IDCT Koeffizienten", "Cr IDCT Koeffizienten"
+Y_IDCT_Koeffizienten, Cb_IDCT_Koeffizienten, Cr_IDCT_Koeffizienten = "IDCT Y Bild", "IDCT  Cb Bild", "IDCT Cr Bild"
 YCbCr_up_Bild, Y_up_Bild, Cb_up_Bild, Cr_up_Bild = "Upsampling YCbCr Bild", "Upsampling Y Bild", "Upsampling Cb Bild", "Upsampling Cr Bild"
 JPEG_RGB_Bild, JPEG_R_Bild, JPEG_G_Bild, JPEG_B_Bild = "JPEG Bild", "JPEG-R Bild", "JPEG-G Bild", "JPEG-B Bild"
 Vergleich_Quant, Vergleich_Bilder = "Evaluation Kompression", "Evaluation Bildqualitaet"
@@ -87,7 +87,6 @@ class Ui_MainWindow(object):
         self.centralwidget.setEnabled(True)
 
     def setui(self):
-
         if index < len(werte) - 2:
             self.stack.setCurrentIndex(0)
             self.label_3.setText("Quellenredundanz (bit/Symbol)")
@@ -126,14 +125,18 @@ class Ui_MainWindow(object):
                 self.label_left.setPixmap(QPixmap(werte[index][0]))
 
             else:
-                self.label_3.setText("Groesse Original, links (bytes)")
-                self.label_4.setText("Groesse Rekonstruiert, rechts (bytes)")
+                self.label_3.setText("")
+                self.label_4.setText("")
+                self.label_9.setText("")
+                self.label_quellenredundanz.setText('')
+                self.label_entropie.setText('')
+                self.label_compfak.setText('')
                 self.label_5.setText("PSNR (dB)")
                 self.label_10.setText("MSE (dB)")
                 self.label_mse.setText(str(mse))
                 self.label_psnr.setText(str(psnr))
-                self.label_right.setPixmap(QPixmap(drucke_bild(str(index), werte[index][1])))
-                self.label_left.setPixmap(QPixmap(drucke_bild(str(index), werte[index][0])))
+                self.label_right.setPixmap(QPixmap(werte[index][1][1]))
+                self.label_left.setPixmap(QPixmap(werte[index][0][1]))
 
 
         self.popup.close()
@@ -393,10 +396,7 @@ def drucke_bild(label, array):
 
 
 def groesse(datei):
-    if isinstance(o, basestring):
-        return os.path.getsize(o)
-    else:
-        return os.path.getsize(datei)
+    return os.path.getsize(datei)
 
 
 class JPEGThread(QThread):
@@ -412,34 +412,15 @@ class JPEGThread(QThread):
 
     def run(self):
         global werte
-        global jpg_pfad
         global nvm
+        werte = []
 
-        bild = np.array(Image.open(self.filename))
-        padbild = nvm.pad(bild)
-        ycbcr = nvm.frHinTransformation(padbild)
-        ycbcr_down = nvm.unterabtastung(ycbcr)
-        dct = nvm.dcTransformation(ycbcr_down)
-        dct_quant = nvm.quantisieren(dct)
-        dct_dequant = nvm.dequantisieren(dct_quant)
-        idct = nvm.idcTransformation(dct_dequant)
-        ycbcr_up = nvm.ueberabtastung(idct)
-        jpg = nvm.frRueckTransformation(ycbcr_up)
-        jpg_pfad = drucke_bild('tmp', jpg)
-
-        codierung = codieren(dct_quant)
-
-        werte = [ padbild, padbild[:,:,0], padbild[:,:,1], padbild[:,:,2],
-        ycbcr, ycbcr[:,:,0], ycbcr[:,:,1], ycbcr[:,:,2],
-        ycbcr_down[:,:,0], ycbcr_down[:,:,1], ycbcr_down[:,:,2],
-        dct[:,:,0],dct[:,:,1], dct[:,:,2],  
-        dct_quant[:,:,0],dct_quant[:,:,1], dct_quant[:,:,2], 
-        dct_dequant[:,:,0], dct_dequant[:,:,1],  dct_dequant[:,:,2],  
-        idct[:,:,0], idct[:,:,1],  idct[:,:,2],  
-        ycbcr_up[:,:,0], ycbcr_up[:,:,1], ycbcr_up[:,:,2],
-        jpg, jpg[:,:,0], jpg[:,:,1],  jpg[:,:,2], [jpg_pfad, codierung], [padbild, jpg]
-        ]
-
+        cod_pfad, werte_komp = nvm.komprimiere(self.filename)
+        jpg_pfad, werte_dekomp = nvm.dekomprimiere(cod_pfad)
+        werte.extend(werte_komp)
+        werte.extend(werte_dekomp)
+        werte.append([self.filename, cod_pfad])
+        werte.append([[werte_komp[0], self.filename], [werte_dekomp[len(werte_dekomp)-4], jpg_pfad]])
         self.signal.emit()
 
 
@@ -480,8 +461,8 @@ class LoadThread(QThread):
             compfak = nvm.compFak(groesse1, groesse2)
 
         else:
-            matrix1 = werte[self.index][0]
-            matrix2 = werte[self.index][1]
+            matrix1 = werte[self.index][0][0]
+            matrix2 = werte[self.index][1][0]
             mse = nvm.mse(matrix1, matrix2)
             psnr = nvm.psnr(matrix1, matrix2)
 
