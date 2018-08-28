@@ -46,7 +46,7 @@ def komprimiere(datei, *op_zielpfad):
     # Standard Pfad, wenn keiner angegeben
     if len(op_zielpfad) == 0:
         bildname = datei.split('/')[len(datei.split('/'))-1].split('.')[0]
-        zielpfad = os.path.abspath('./Ergebnisse/' + bildname + '_codiert.json')
+        zielpfad = os.path.abspath('Ergebnisse/' + bildname + '_codiert.json')
     else:
         zielpfad = op_zielpfad[0]
     # Schreiben der codierten Daten in eine Datei
@@ -119,7 +119,7 @@ def dekomprimiere(datei, *op_zielpfad):
     # Standard zielpfad, wenn keiner angegeben
     if len(op_zielpfad) == 0:
         bildname = datei.split('/')[len(datei.split('/'))-1].split('.')[0]
-        zielpfad = os.path.abspath('./Ergebnisse/' + bildname + '_komprimiert.png')
+        zielpfad = os.path.abspath('Ergebnisse/' + bildname + '_komprimiert.png')
     else:
         zielpfad = op_zielpfad[0]
     img = Image.fromarray(bild)
